@@ -1,0 +1,17 @@
+{
+  "name": "line-translation-bot",
+  "version": "1.0.0",
+  "description": "LINE multi-language translation bot using DeepL API",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "deploy": "gcloud functions deploy lineTranslationBot --runtime nodejs20 --trigger-http --allow-unauthenticated --set-env-vars LINE_CHANNEL_ACCESS_TOKEN=$LINE_CHANNEL_ACCESS_TOKEN,LINE_CHANNEL_SECRET=$LINE_CHANNEL_SECRET,DEEPL_API_KEY=$DEEPL_API_KEY"
+  },
+  "dependencies": {
+    "@line/bot-sdk": "^9.9.0",
+    "axios": "^1.7.0"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}
