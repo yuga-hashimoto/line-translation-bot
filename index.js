@@ -1,5 +1,6 @@
 const line = require('@line/bot-sdk');
 const axios = require('axios');
+const express = require('express');
 
 // LINE Messaging APIの設定
 const config = {
@@ -150,8 +151,8 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
   };
 }
 
-// Google Cloud Functions のエントリーポイント
-exports.lineTranslationBot = async (req, res) => {
+// Webhook処理関数
+async function handleWebhook(req, res) {
   console.log('Translation Webhook received');
   
   // CORS対応
@@ -245,4 +246,29 @@ exports.lineTranslationBot = async (req, res) => {
       error: error.message
     });
   }
-};
+}
+
+// Cloud Run用のExpressサーバー
+const app = express();
+
+// JSONボディパーサー
+app.use(express.json());
+
+// ヘルスチェック用エンドポイント
+app.get('/', (req, res) => {
+  res.status(200).send('LINE Translation Bot is running!');
+});
+
+// Webhook エンドポイント
+app.post('/', handleWebhook);
+
+// Cloud Functions との互換性
+exports.lineTranslationBot = handleWebhook;
+
+// Cloud Run用のサーバー起動
+const PORT = process.env.PORT || 8080;
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
+  });
+}
