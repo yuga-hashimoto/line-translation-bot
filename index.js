@@ -139,7 +139,7 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
   
   return {
     type: 'flex',
-    altText: '多言語翻訳結果',
+    altText: originalText,
     contents: {
       type: 'bubble',
       body: {
