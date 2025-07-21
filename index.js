@@ -16,22 +16,31 @@ const client = new line.Client(config);
 
 // 言語を検出する関数
 function detectLanguage(text) {
-  // 日本語の検出（ひらがな、カタカナ、漢字）
-  const japanesePattern = /[\u3040-\u309F\u30A0-\u30FF\u4E00-\u9FAF]/;
+  // ひらがな・カタカナの検出（日本語特有）
+  const hiraganaPattern = /[\u3040-\u309F]/;
+  const katakanaPattern = /[\u30A0-\u30FF]/;
   // 韓国語の検出（ハングル）
   const koreanPattern = /[\uAC00-\uD7AF]/;
-  // 中国語の検出（中国語特有の文字）
+  // 漢字の検出
   const chinesePattern = /[\u4E00-\u9FFF]/;
   
-  if (japanesePattern.test(text)) {
-    return 'ja';
-  } else if (koreanPattern.test(text)) {
+  // 韓国語（ハングル）を最初にチェック
+  if (koreanPattern.test(text)) {
     return 'ko';
-  } else if (chinesePattern.test(text)) {
-    return 'zh';
-  } else {
-    return 'en'; // デフォルトは英語
   }
+  
+  // 日本語（ひらがな・カタカナがある場合）
+  if (hiraganaPattern.test(text) || katakanaPattern.test(text)) {
+    return 'ja';
+  }
+  
+  // 漢字のみの場合は中国語（台湾語）と判定
+  if (chinesePattern.test(text)) {
+    return 'zh';
+  }
+  
+  // デフォルトは英語
+  return 'en';
 }
 
 // DeepL APIを使用して翻訳する関数
