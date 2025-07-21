@@ -217,6 +217,12 @@ async function handleWebhook(req, res) {
             return;
           }
           
+          // 角括弧が含まれている場合は翻訳をスキップ
+          if (text.includes('([)') || text.includes('(])')) {
+            console.log('角括弧が含まれているため翻訳をスキップします:', text);
+            return;
+          }
+          
           // 言語を検出
           const sourceLang = detectLanguage(text);
           console.log(`検出された言語: ${sourceLang}`);
