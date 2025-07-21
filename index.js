@@ -223,6 +223,13 @@ async function handleWebhook(req, res) {
             return;
           }
           
+          // (emoji)のみの場合（複数個も含む）翻訳をスキップ
+          const emojiOnlyPattern = /^(\(emoji\)\s*)+$/;
+          if (emojiOnlyPattern.test(text)) {
+            console.log('(emoji)のみのため翻訳をスキップします:', text);
+            return;
+          }
+          
           // 言語を検出
           const sourceLang = detectLanguage(text);
           console.log(`検出された言語: ${sourceLang}`);
