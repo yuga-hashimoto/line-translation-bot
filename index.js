@@ -17,25 +17,40 @@ const client = new line.Client(config);
 // 言語を検出する関数
 function detectLanguage(text) {
   // ひらがな・カタカナの検出（日本語特有）
-  const hiraganaPattern = /[\u3040-\u309F]/;
-  const katakanaPattern = /[\u30A0-\u30FF]/;
+  const hiraganaPattern = /[\u3040-\u309F]/g;
+  const katakanaPattern = /[\u30A0-\u30FF]/g;
   // 韓国語の検出（ハングル）
-  const koreanPattern = /[\uAC00-\uD7AF]/;
+  const koreanPattern = /[\uAC00-\uD7AF]/g;
   // 漢字の検出
-  const chinesePattern = /[\u4E00-\u9FFF]/;
+  const chinesePattern = /[\u4E00-\u9FFF]/g;
   
-  // 韓国語（ハングル）を最初にチェック
-  if (koreanPattern.test(text)) {
+  const textLength = text.length;
+  
+  // 各文字種の数をカウント
+  const hiraganaCount = (text.match(hiraganaPattern) || []).length;
+  const katakanaCount = (text.match(katakanaPattern) || []).length;
+  const koreanCount = (text.match(koreanPattern) || []).length;
+  const chineseCount = (text.match(chinesePattern) || []).length;
+  
+  // 比率を計算
+  const hiraganaRatio = hiraganaCount / textLength;
+  const katakanaRatio = katakanaCount / textLength;
+  const koreanRatio = koreanCount / textLength;
+  const chineseRatio = chineseCount / textLength;
+  const japaneseRatio = hiraganaRatio + katakanaRatio;
+  
+  // 韓国語（ハングル）が30%以上の場合
+  if (koreanRatio >= 0.3) {
     return 'ko';
   }
   
-  // 日本語（ひらがな・カタカナがある場合）
-  if (hiraganaPattern.test(text) || katakanaPattern.test(text)) {
+  // 日本語（ひらがな・カタカナの合計が30%以上、かつひらがなが10%以上の場合）
+  if (japaneseRatio >= 0.3 && hiraganaRatio >= 0.1) {
     return 'ja';
   }
   
-  // 漢字のみの場合は中国語（台湾語）と判定
-  if (chinesePattern.test(text)) {
+  // 漢字が50%以上の場合は中国語（台湾語）
+  if (chineseRatio >= 0.5) {
     return 'zh';
   }
   
