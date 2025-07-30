@@ -14,8 +14,19 @@ const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
 
 const client = new line.Client(config);
 
-// 言語を検出する関数
-function detectLanguage(text) {
+// ユーザーの言語設定を取得する関数
+async function getUserLanguage(userId) {
+  try {
+    const profile = await client.getProfile(userId);
+    return profile.language;
+  } catch (error) {
+    console.error('ユーザープロファイル取得エラー:', error);
+    return null;
+  }
+}
+
+// テキストから言語を検出する関数（フォールバック用）
+function detectLanguageFromText(text) {
   // ひらがな・カタカナの検出（日本語特有）
   const hiraganaPattern = /[\u3040-\u309F]/g;
   const katakanaPattern = /[\u30A0-\u30FF]/g;
@@ -58,6 +69,31 @@ function detectLanguage(text) {
   return 'en';
 }
 
+// 言語を検出する関数（ユーザー設定優先、フォールバックでテキスト分析）
+async function detectLanguage(text, userId) {
+  // まずユーザーの言語設定を取得
+  const userLanguage = await getUserLanguage(userId);
+  
+  if (userLanguage) {
+    // ユーザーの言語設定をLINE形式からISO形式に変換
+    const languageMap = {
+      'ja': 'ja',
+      'ko': 'ko',
+      'zh-Hant': 'zh',
+      'zh-Hans': 'zh',
+      'en': 'en'
+    };
+    
+    const detectedLang = languageMap[userLanguage] || userLanguage;
+    console.log(`ユーザー言語設定: ${userLanguage} -> ${detectedLang}`);
+    return detectedLang;
+  }
+  
+  // ユーザー設定が取得できない場合はテキスト分析にフォールバック
+  console.log('ユーザー言語設定が取得できないため、テキスト分析を使用');
+  return detectLanguageFromText(text);
+}
+
 // DeepL APIを使用して翻訳する関数
 async function translateText(text, targetLang) {
   try {
@@ -89,12 +125,10 @@ async function translateToMultipleLanguages(text, sourceLang) {
   let targetLanguages = [];
   
   // 入力言語に基づいて翻訳対象言語を決定
+  // 韓国、台湾・香港・中国、日本、その他（英語）
   switch (sourceLang) {
     case 'ja':
       targetLanguages = ['ko', 'zh', 'en'];
-      break;
-    case 'en':
-      targetLanguages = ['ja', 'ko', 'zh'];
       break;
     case 'ko':
       targetLanguages = ['ja', 'zh', 'en'];
@@ -103,6 +137,7 @@ async function translateToMultipleLanguages(text, sourceLang) {
       targetLanguages = ['ja', 'ko', 'en'];
       break;
     default:
+      // その他の言語（タイ語、英語など）
       targetLanguages = ['ja', 'ko', 'zh'];
   }
   
@@ -246,7 +281,7 @@ async function handleWebhook(req, res) {
           }
           
           // 言語を検出
-          const sourceLang = detectLanguage(text);
+          const sourceLang = await detectLanguage(text, event.source.userId);
           console.log(`検出された言語: ${sourceLang}`);
           console.log(`翻訳対象テキスト: "${text}"`);
           
