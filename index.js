@@ -42,7 +42,7 @@ function detectLanguageFromText(text) {
   if (koreanRatio >= 0.2) return 'ko';
   if (hiraganaRatio >= 0.05) return 'ja'; // ひらがなは日本語の確実な指標
   if (japaneseRatio >= 0.2) return 'ja'; // カタカナメイン
-  if (chineseRatio >= 0.4 && hiraganaRatio === 0) return 'zh'; // ひらがななしの漢字
+  if (chineseRatio >= 0.2 && hiraganaRatio === 0) return 'zh'; // 中国語の閾値を下げる
   if (latinRatio >= 0.6) return 'en';
   
   return 'en'; // デフォルト
@@ -65,6 +65,7 @@ function detectLanguage(text) {
       'jpn': 'ja',
       'kor': 'ko', 
       'cmn': 'zh', // 北京官話
+      'zho': 'zh', // 中国語
       'eng': 'en'
     };
     
