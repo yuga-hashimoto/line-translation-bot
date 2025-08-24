@@ -1,12 +1,7 @@
-console.log('🚀 LINE Translation Bot 起動開始');
-
 const line = require('@line/bot-sdk');
 const axios = require('axios');
 const express = require('express');
-// francは動的importで読み込み
-const LanguageDetect = require('languagedetect');
-
-console.log('✅ 依存関係読み込み完了');
+const franc = require('franc');
 
 // LINE Messaging APIの設定
 const config = {
@@ -19,7 +14,6 @@ const DEEPL_API_KEY = process.env.DEEPL_API_KEY;
 const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
 
 const client = new line.Client(config);
-console.log('✅ LINE Client初期化完了');
 
 // 改良版テキストから言語を検出する関数（短文・フォールバック用）
 function detectLanguageFromText(text) {
@@ -54,7 +48,7 @@ function detectLanguageFromText(text) {
   return 'en'; // デフォルト
 }
 
-// 改良された言語検出（LanguageDetect + 自前ロジック）
+// ハイブリッド言語検出（高精度）
 function detectLanguage(text) {
   // 1. 短文や特殊ケースは自前ロジック
   if (text.length < 10) {
@@ -62,29 +56,28 @@ function detectLanguage(text) {
     return detectLanguageFromText(text);
   }
   
-  // 2. LanguageDetectでの検出を試行
+  // 2. 長文はfrancで高精度検出
   try {
-    const lngDetector = new LanguageDetect();
-    const results = lngDetector.detect(text, 1);
-    if (results.length > 0) {
-      const [language, confidence] = results[0];
-      console.log(`LanguageDetect検出: ${language} (confidence: ${confidence})`);
-      
-      const langMap = {
-        'japanese': 'ja',
-        'korean': 'ko',
-        'chinese': 'zh',
-        'english': 'en'
-      };
-      
-      const mapped = langMap[language];
-      if (mapped && confidence > 0.3) {
-        console.log(`LanguageDetectマッピング: ${language} -> ${mapped}`);
-        return mapped;
-      }
+    const detected = franc(text, { minLength: 3 });
+    console.log(`Francによる検出結果: ${detected}`);
+    
+    const languageMap = {
+      'jpn': 'ja',
+      'kor': 'ko', 
+      'cmn': 'zh', // 北京官話
+      'zho': 'zh', // 中国語
+      'eng': 'en'
+    };
+    
+    const mapped = languageMap[detected];
+    if (mapped) {
+      console.log(`言語マッピング: ${detected} -> ${mapped}`);
+      return mapped;
+    } else {
+      console.log(`未対応言語: ${detected}、フォールバックを使用`);
     }
   } catch (error) {
-    console.log('LanguageDetect検出に失敗:', error.message);
+    console.log('Franc検出に失敗、フォールバックを使用:', error.message);
   }
   
   // 3. フォールバック
@@ -318,7 +311,6 @@ async function handleWebhook(req, res) {
 
 // Cloud Run用のExpressサーバー
 const app = express();
-console.log('✅ Expressアプリ作成完了');
 
 // JSONボディパーサー
 app.use(express.json());
@@ -336,30 +328,8 @@ exports.lineTranslationBot = handleWebhook;
 
 // Cloud Run用のサーバー起動
 const PORT = process.env.PORT || 8080;
-
-console.log('Cloud Run起動開始...');
-console.log(`設定されたポート: ${PORT}`);
-console.log(`NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
-
 if (require.main === module) {
-  console.log('メインモジュールとして実行中...');
-  
-  const server = app.listen(PORT, '0.0.0.0', () => {
-    console.log(`✅ Server is running on port ${PORT}`);
-    console.log('Cloud Runでリクエスト待機中...');
-  });
-  
-  server.on('error', (error) => {
-    console.error('❌ サーバー起動エラー:', error);
-    process.exit(1);
-  });
-  
-  // Graceful shutdown
-  process.on('SIGTERM', () => {
-    console.log('SIGTERM受信、サーバーを停止中...');
-    server.close(() => {
-      console.log('サーバー停止完了');
-      process.exit(0);
-    });
+  app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
   });
 }
