@@ -15,10 +15,21 @@ const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
 const client = new line.Client(config);
 
 // ユーザーの言語設定を取得する関数
-async function getUserLanguage(userId) {
+async function getUserLanguage(userId, sourceType, groupId = null) {
   try {
-    const profile = await client.getProfile(userId);
-    return profile.language;
+    let profile;
+    
+    if (sourceType === 'group' && groupId) {
+      // グループチャットの場合はgetGroupMemberProfileを使用
+      profile = await client.getGroupMemberProfile(groupId, userId);
+    } else if (sourceType === 'user') {
+      // 個人チャットの場合はgetProfileを使用
+      profile = await client.getProfile(userId);
+    } else {
+      return null;
+    }
+    
+    return profile.language || null;
   } catch (error) {
     console.error('ユーザープロファイル取得エラー:', error);
     return null;
@@ -70,9 +81,9 @@ function detectLanguageFromText(text) {
 }
 
 // 言語を検出する関数（ユーザー設定優先、フォールバックでテキスト分析）
-async function detectLanguage(text, userId) {
+async function detectLanguage(text, userId, sourceType, groupId = null) {
   // まずユーザーの言語設定を取得
-  const userLanguage = await getUserLanguage(userId);
+  const userLanguage = await getUserLanguage(userId, sourceType, groupId);
   
   if (userLanguage) {
     // ユーザーの言語設定をLINE形式からISO形式に変換
@@ -281,7 +292,7 @@ async function handleWebhook(req, res) {
           }
           
           // 言語を検出
-          const sourceLang = await detectLanguage(text, event.source.userId);
+          const sourceLang = await detectLanguage(text, event.source.userId, event.source.type, event.source.groupId);
           console.log(`検出された言語: ${sourceLang}`);
           console.log(`翻訳対象テキスト: "${text}"`);
           
