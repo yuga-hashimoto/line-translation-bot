@@ -73,9 +73,11 @@ function detectLanguage(text) {
     if (mapped) {
       console.log(`言語マッピング: ${detected} -> ${mapped}`);
       return mapped;
+    } else {
+      console.log(`未対応言語: ${detected}、フォールバックを使用`);
     }
   } catch (error) {
-    console.log('Franc検出に失敗、フォールバックを使用');
+    console.log('Franc検出に失敗、フォールバックを使用:', error.message);
   }
   
   // 3. フォールバック
