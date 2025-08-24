@@ -1,6 +1,7 @@
 const line = require('@line/bot-sdk');
 const axios = require('axios');
 const express = require('express');
+const franc = require('franc');
 
 // LINE Messaging APIの設定
 const config = {
@@ -14,94 +15,70 @@ const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
 
 const client = new line.Client(config);
 
-// ユーザーの言語設定を取得する関数
-async function getUserLanguage(userId, sourceType, groupId = null) {
-  try {
-    let profile;
-    
-    if (sourceType === 'group' && groupId) {
-      // グループチャットの場合はgetGroupMemberProfileを使用
-      profile = await client.getGroupMemberProfile(groupId, userId);
-    } else if (sourceType === 'user') {
-      // 個人チャットの場合はgetProfileを使用
-      profile = await client.getProfile(userId);
-    } else {
-      return null;
-    }
-    
-    return profile.language || null;
-  } catch (error) {
-    console.error('ユーザープロファイル取得エラー:', error);
-    return null;
-  }
-}
-
-// テキストから言語を検出する関数（フォールバック用）
+// 改良版テキストから言語を検出する関数（短文・フォールバック用）
 function detectLanguageFromText(text) {
-  // ひらがな・カタカナの検出（日本語特有）
   const hiraganaPattern = /[\u3040-\u309F]/g;
   const katakanaPattern = /[\u30A0-\u30FF]/g;
-  // 韓国語の検出（ハングル）
   const koreanPattern = /[\uAC00-\uD7AF]/g;
-  // 漢字の検出
   const chinesePattern = /[\u4E00-\u9FFF]/g;
+  const latinPattern = /[a-zA-Z]/g;
   
   const textLength = text.length;
-  
-  // 各文字種の数をカウント
   const hiraganaCount = (text.match(hiraganaPattern) || []).length;
   const katakanaCount = (text.match(katakanaPattern) || []).length;
   const koreanCount = (text.match(koreanPattern) || []).length;
   const chineseCount = (text.match(chinesePattern) || []).length;
+  const latinCount = (text.match(latinPattern) || []).length;
   
   // 比率を計算
   const hiraganaRatio = hiraganaCount / textLength;
   const katakanaRatio = katakanaCount / textLength;
   const koreanRatio = koreanCount / textLength;
   const chineseRatio = chineseCount / textLength;
+  const latinRatio = latinCount / textLength;
   const japaneseRatio = hiraganaRatio + katakanaRatio;
   
-  // 韓国語（ハングル）が30%以上の場合
-  if (koreanRatio >= 0.3) {
-    return 'ko';
-  }
+  // 優先順位での判定（最も特徴的な文字から）
+  if (koreanRatio >= 0.2) return 'ko';
+  if (hiraganaRatio >= 0.05) return 'ja'; // ひらがなは日本語の確実な指標
+  if (japaneseRatio >= 0.2) return 'ja'; // カタカナメイン
+  if (chineseRatio >= 0.4 && hiraganaRatio === 0) return 'zh'; // ひらがななしの漢字
+  if (latinRatio >= 0.6) return 'en';
   
-  // 日本語（ひらがな・カタカナの合計が30%以上、かつひらがなが10%以上の場合）
-  if (japaneseRatio >= 0.3 && hiraganaRatio >= 0.1) {
-    return 'ja';
-  }
-  
-  // 漢字が50%以上の場合は中国語（台湾語）
-  if (chineseRatio >= 0.5) {
-    return 'zh';
-  }
-  
-  // デフォルトは英語
-  return 'en';
+  return 'en'; // デフォルト
 }
 
-// 言語を検出する関数（ユーザー設定優先、フォールバックでテキスト分析）
-async function detectLanguage(text, userId, sourceType, groupId = null) {
-  // まずユーザーの言語設定を取得
-  const userLanguage = await getUserLanguage(userId, sourceType, groupId);
-  
-  if (userLanguage) {
-    // ユーザーの言語設定をLINE形式からISO形式に変換
-    const languageMap = {
-      'ja': 'ja',
-      'ko': 'ko',
-      'zh-Hant': 'zh',
-      'zh-Hans': 'zh',
-      'en': 'en'
-    };
-    
-    const detectedLang = languageMap[userLanguage] || userLanguage;
-    console.log(`ユーザー言語設定: ${userLanguage} -> ${detectedLang}`);
-    return detectedLang;
+// ハイブリッド言語検出（高精度）
+function detectLanguage(text) {
+  // 1. 短文や特殊ケースは自前ロジック
+  if (text.length < 10) {
+    console.log('短文のため自前ロジックを使用');
+    return detectLanguageFromText(text);
   }
   
-  // ユーザー設定が取得できない場合はテキスト分析にフォールバック
-  console.log('ユーザー言語設定が取得できないため、テキスト分析を使用');
+  // 2. 長文はfrancで高精度検出
+  try {
+    const detected = franc(text, { minLength: 3 });
+    console.log(`Francによる検出結果: ${detected}`);
+    
+    const languageMap = {
+      'jpn': 'ja',
+      'kor': 'ko', 
+      'cmn': 'zh', // 北京官話
+      'eng': 'en'
+    };
+    
+    const mapped = languageMap[detected];
+    if (mapped) {
+      console.log(`言語マッピング: ${detected} -> ${mapped}`);
+      return mapped;
+    }
+  } catch (error) {
+    console.log('Franc検出に失敗、フォールバックを使用');
+  }
+  
+  // 3. フォールバック
+  console.log('フォールバックロジックを使用');
   return detectLanguageFromText(text);
 }
 
@@ -136,7 +113,6 @@ async function translateToMultipleLanguages(text, sourceLang) {
   let targetLanguages = [];
   
   // 入力言語に基づいて翻訳対象言語を決定
-  // 韓国、台湾・香港・中国、日本、その他（英語）
   switch (sourceLang) {
     case 'ja':
       targetLanguages = ['ko', 'zh', 'en'];
@@ -148,7 +124,7 @@ async function translateToMultipleLanguages(text, sourceLang) {
       targetLanguages = ['ja', 'ko', 'en'];
       break;
     default:
-      // その他の言語（タイ語、英語など）
+      // その他の言語（英語など）
       targetLanguages = ['ja', 'ko', 'zh'];
   }
   
@@ -292,7 +268,7 @@ async function handleWebhook(req, res) {
           }
           
           // 言語を検出
-          const sourceLang = await detectLanguage(text, event.source.userId, event.source.type, event.source.groupId);
+          const sourceLang = detectLanguage(text);
           console.log(`検出された言語: ${sourceLang}`);
           console.log(`翻訳対象テキスト: "${text}"`);
           
