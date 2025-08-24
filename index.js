@@ -1,7 +1,7 @@
 const line = require('@line/bot-sdk');
 const axios = require('axios');
 const express = require('express');
-const { franc } = require('franc');
+// francは動的importで読み込み
 const LanguageDetect = require('languagedetect');
 
 // LINE Messaging APIの設定
@@ -50,7 +50,7 @@ function detectLanguageFromText(text) {
 }
 
 // ハイブリッド言語検出（高精度）
-function detectLanguage(text) {
+async function detectLanguage(text) {
   // 1. 短文や特殊ケースは自前ロジック
   if (text.length < 10) {
     console.log('短文のため自前ロジックを使用');
@@ -59,6 +59,7 @@ function detectLanguage(text) {
   
   // 2. 長文はfrancで高精度検出
   try {
+    const { franc } = await import('franc');
     const detected = franc(text, { minLength: 3 });
     console.log(`Francによる検出結果: ${detected}`);
     
@@ -297,7 +298,7 @@ async function handleWebhook(req, res) {
           }
           
           // 言語を検出
-          const sourceLang = detectLanguage(text);
+          const sourceLang = await detectLanguage(text);
           console.log(`検出された言語: ${sourceLang}`);
           console.log(`翻訳対象テキスト: "${text}"`);
           
