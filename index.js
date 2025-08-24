@@ -1,7 +1,8 @@
 const line = require('@line/bot-sdk');
 const axios = require('axios');
 const express = require('express');
-const franc = require('franc');
+const { franc } = require('franc');
+const LanguageDetect = require('languagedetect');
 
 // LINE Messaging APIの設定
 const config = {
@@ -74,10 +75,35 @@ function detectLanguage(text) {
       console.log(`言語マッピング: ${detected} -> ${mapped}`);
       return mapped;
     } else {
-      console.log(`未対応言語: ${detected}、フォールバックを使用`);
+      console.log(`未対応言語: ${detected}、LanguageDetectを試行`);
     }
   } catch (error) {
-    console.log('Franc検出に失敗、フォールバックを使用:', error.message);
+    console.log('Franc検出に失敗:', error.message);
+  }
+  
+  // 2.5. LanguageDetectでの検出を試行
+  try {
+    const lngDetector = new LanguageDetect();
+    const results = lngDetector.detect(text, 1);
+    if (results.length > 0) {
+      const [language, confidence] = results[0];
+      console.log(`LanguageDetect検出: ${language} (confidence: ${confidence})`);
+      
+      const langMap = {
+        'japanese': 'ja',
+        'korean': 'ko',
+        'chinese': 'zh',
+        'english': 'en'
+      };
+      
+      const mapped = langMap[language];
+      if (mapped && confidence > 0.3) {
+        console.log(`LanguageDetectマッピング: ${language} -> ${mapped}`);
+        return mapped;
+      }
+    }
+  } catch (error) {
+    console.log('LanguageDetect検出に失敗:', error.message);
   }
   
   // 3. フォールバック
