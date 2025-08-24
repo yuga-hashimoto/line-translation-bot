@@ -1,8 +1,12 @@
+console.log('🚀 LINE Translation Bot 起動開始');
+
 const line = require('@line/bot-sdk');
 const axios = require('axios');
 const express = require('express');
 // francは動的importで読み込み
 const LanguageDetect = require('languagedetect');
+
+console.log('✅ 依存関係読み込み完了');
 
 // LINE Messaging APIの設定
 const config = {
@@ -15,6 +19,7 @@ const DEEPL_API_KEY = process.env.DEEPL_API_KEY;
 const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
 
 const client = new line.Client(config);
+console.log('✅ LINE Client初期化完了');
 
 // 改良版テキストから言語を検出する関数（短文・フォールバック用）
 function detectLanguageFromText(text) {
@@ -313,6 +318,7 @@ async function handleWebhook(req, res) {
 
 // Cloud Run用のExpressサーバー
 const app = express();
+console.log('✅ Expressアプリ作成完了');
 
 // JSONボディパーサー
 app.use(express.json());
@@ -330,8 +336,30 @@ exports.lineTranslationBot = handleWebhook;
 
 // Cloud Run用のサーバー起動
 const PORT = process.env.PORT || 8080;
+
+console.log('Cloud Run起動開始...');
+console.log(`設定されたポート: ${PORT}`);
+console.log(`NODE_ENV: ${process.env.NODE_ENV || 'development'}`);
+
 if (require.main === module) {
-  app.listen(PORT, () => {
-    console.log(`Server is running on port ${PORT}`);
+  console.log('メインモジュールとして実行中...');
+  
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`✅ Server is running on port ${PORT}`);
+    console.log('Cloud Runでリクエスト待機中...');
+  });
+  
+  server.on('error', (error) => {
+    console.error('❌ サーバー起動エラー:', error);
+    process.exit(1);
+  });
+  
+  // Graceful shutdown
+  process.on('SIGTERM', () => {
+    console.log('SIGTERM受信、サーバーを停止中...');
+    server.close(() => {
+      console.log('サーバー停止完了');
+      process.exit(0);
+    });
   });
 }
