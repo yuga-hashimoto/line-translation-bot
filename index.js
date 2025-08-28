@@ -107,7 +107,7 @@ async function translateWithGeminiBatch(text, targetLanguages) {
     
     const languageNames = {
       'ja': '日本語',
-      'ko': '韓국어', 
+      'ko': '한국어', 
       'zh': '中文',
       'en': 'English'
     };
