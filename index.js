@@ -1,7 +1,14 @@
 const line = require('@line/bot-sdk');
 const axios = require('axios');
 const express = require('express');
-const franc = require('franc');
+const { GoogleGenerativeAI } = require('@google/generative-ai');
+
+// Dynamic import for franc (ES module)
+let franc;
+(async () => {
+  const francModule = await import('franc');
+  franc = francModule.franc;
+})();
 
 // LINE Messaging APIの設定
 const config = {
@@ -9,7 +16,11 @@ const config = {
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 
-// DeepL APIの設定
+// Gemini APIの設定
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
+const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+
+// DeepL APIの設定（フォールバック用）
 const DEEPL_API_KEY = process.env.DEEPL_API_KEY;
 const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
 
@@ -56,28 +67,32 @@ function detectLanguage(text) {
     return detectLanguageFromText(text);
   }
   
-  // 2. 長文はfrancで高精度検出
-  try {
-    const detected = franc(text, { minLength: 3 });
-    console.log(`Francによる検出結果: ${detected}`);
-    
-    const languageMap = {
-      'jpn': 'ja',
-      'kor': 'ko', 
-      'cmn': 'zh', // 北京官話
-      'zho': 'zh', // 中国語
-      'eng': 'en'
-    };
-    
-    const mapped = languageMap[detected];
-    if (mapped) {
-      console.log(`言語マッピング: ${detected} -> ${mapped}`);
-      return mapped;
-    } else {
-      console.log(`未対応言語: ${detected}、フォールバックを使用`);
+  // 2. 長文はfrancで高精度検出（francが読み込まれている場合のみ）
+  if (franc) {
+    try {
+      const detected = franc(text, { minLength: 3 });
+      console.log(`Francによる検出結果: ${detected}`);
+      
+      const languageMap = {
+        'jpn': 'ja',
+        'kor': 'ko', 
+        'cmn': 'zh', // 北京官話
+        'zho': 'zh', // 中国語
+        'eng': 'en'
+      };
+      
+      const mapped = languageMap[detected];
+      if (mapped) {
+        console.log(`言語マッピング: ${detected} -> ${mapped}`);
+        return mapped;
+      } else {
+        console.log(`未対応言語: ${detected}、フォールバックを使用`);
+      }
+    } catch (error) {
+      console.log('Franc検出に失敗、フォールバックを使用:', error.message);
     }
-  } catch (error) {
-    console.log('Franc検出に失敗、フォールバックを使用:', error.message);
+  } else {
+    console.log('Francがまだ読み込まれていないため、フォールバックを使用');
   }
   
   // 3. フォールバック
@@ -85,8 +100,96 @@ function detectLanguage(text) {
   return detectLanguageFromText(text);
 }
 
-// DeepL APIを使用して翻訳する関数
-async function translateText(text, targetLang) {
+// Gemini APIを使用して一括翻訳する関数
+async function translateWithGeminiBatch(text, targetLanguages) {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    
+    const languageNames = {
+      'ja': '日本語',
+      'ko': '韓국어', 
+      'zh': '中文',
+      'en': 'English'
+    };
+    
+    // 対象言語のリストを作成
+    const targetLangList = targetLanguages.map(lang => languageNames[lang]).join('、');
+    
+    const prompt = `以下のテキストを${targetLangList}に翻訳してください。
+JSON形式で返してください（他の文字は含めないでください）：
+
+{${targetLanguages.map(lang => `"${lang}": "翻訳結果"`).join(', ')}}
+
+翻訳対象テキスト：
+${text}`;
+    
+    console.log('Gemini一括翻訳プロンプト:', prompt);
+    
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const responseText = response.text().trim();
+    
+    console.log('Gemini APIレスポンス:', responseText);
+    
+    // JSONをパース（マークダウンコードブロックを除去）
+    try {
+      // ```json と ``` を除去
+      let cleanedText = responseText.replace(/```json\s*/, '').replace(/```\s*$/, '');
+      cleanedText = cleanedText.trim();
+      
+      const translations = JSON.parse(cleanedText);
+      return translations;
+    } catch (parseError) {
+      console.error('JSON解析エラー:', parseError.message);
+      console.error('レスポンステキスト:', responseText);
+      
+      // 正規表現でJSONを抽出する最後の試み
+      try {
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const translations = JSON.parse(jsonMatch[0]);
+          return translations;
+        }
+      } catch (regexParseError) {
+        console.error('正規表現でのJSON抽出も失敗:', regexParseError.message);
+      }
+      
+      return null;
+    }
+    
+  } catch (error) {
+    console.error('Gemini API翻訳エラー:', error);
+    return null;
+  }
+}
+
+// 単一言語翻訳（フォールバック用）
+async function translateWithGemini(text, targetLang) {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    
+    const languageNames = {
+      'ja': '日本語',
+      'ko': '한국어',
+      'zh': '中文',
+      'en': 'English'
+    };
+    
+    const prompt = `以下のテキストを${languageNames[targetLang]}に翻訳してください。翻訳結果のみを返してください：\n\n${text}`;
+    
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const translatedText = response.text().trim();
+    
+    return translatedText || null;
+  } catch (error) {
+    console.error('Gemini API翻訳エラー:', error);
+    return null;
+  }
+}
+
+// DeepL APIを使用して翻訳する関数（フォールバック用）
+async function translateWithDeepL(text, targetLang) {
   try {
     const params = new URLSearchParams();
     params.append('auth_key', DEEPL_API_KEY);
@@ -110,9 +213,32 @@ async function translateText(text, targetLang) {
   }
 }
 
+// 翻訳を試行する関数（Gemini -> DeepLの順）
+async function translateText(text, targetLang) {
+  // まずGeminiで試行
+  console.log(`Geminiで翻訳を試行: ${text} -> ${targetLang}`);
+  let result = await translateWithGemini(text, targetLang);
+  
+  if (result) {
+    console.log('Geminiでの翻訳が成功');
+    return result;
+  }
+  
+  // Geminiが失敗した場合はDeepLをフォールバック
+  console.log('Geminiが失敗、DeepLをフォールバックとして使用');
+  result = await translateWithDeepL(text, targetLang);
+  
+  if (result) {
+    console.log('DeepLでの翻訳が成功');
+    return result;
+  }
+  
+  console.log('すべての翻訳APIが失敗');
+  return null;
+}
+
 // 複数言語に翻訳する関数
 async function translateToMultipleLanguages(text, sourceLang) {
-  const translations = {};
   let targetLanguages = [];
   
   // 入力言語に基づいて翻訳対象言語を決定
@@ -131,7 +257,19 @@ async function translateToMultipleLanguages(text, sourceLang) {
       targetLanguages = ['ja', 'ko', 'zh'];
   }
   
-  // 各言語に翻訳
+  // まずGeminiで一括翻訳を試行
+  console.log(`Geminiで一括翻訳を試行: ${text} -> [${targetLanguages.join(', ')}]`);
+  let translations = await translateWithGeminiBatch(text, targetLanguages);
+  
+  if (translations && Object.keys(translations).length > 0) {
+    console.log('Gemini一括翻訳が成功');
+    return translations;
+  }
+  
+  // Gemini一括翻訳が失敗した場合は従来の方式（個別翻訳）でフォールバック
+  console.log('Gemini一括翻訳が失敗、個別翻訳でフォールバック');
+  translations = {};
+  
   for (const targetLang of targetLanguages) {
     const translated = await translateText(text, targetLang);
     if (translated) {
