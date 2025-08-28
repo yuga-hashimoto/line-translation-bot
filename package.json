@@ -11,7 +11,8 @@
     "@line/bot-sdk": "^9.9.0",
     "axios": "^1.7.0",
     "express": "^4.18.0",
-    "franc": "^6.2.0"
+    "franc": "^6.2.0",
+    "languagedetect": "^2.0.0"
   },
   "engines": {
     "node": ">=18"
