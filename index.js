@@ -401,10 +401,11 @@ async function handleWebhook(req, res) {
             return;
           }
           
-          // (emoji)のみの場合（複数個も含む）翻訳をスキップ
-          const emojiOnlyPattern = /^(\(emoji\)\s*)+$/;
-          if (emojiOnlyPattern.test(text)) {
-            console.log('(emoji)のみのため翻訳をスキップします:', text);
+          // LINE絵文字のみの場合（複数個も含む）翻訳をスキップ
+          // LINE絵文字は (xxx) の形式で表現される（emoji, brown, cony, sally等）
+          const lineEmojiOnlyPattern = /^(\([^)]+\)\s*)+$/;
+          if (lineEmojiOnlyPattern.test(text)) {
+            console.log('LINE絵文字のみのため翻訳をスキップします:', text);
             return;
           }
           
