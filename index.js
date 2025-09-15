@@ -16,6 +16,9 @@ const config = {
   channelSecret: process.env.LINE_CHANNEL_SECRET
 };
 
+// 特定のグループIDでの翻訳設定
+const FRENCH_ONLY_GROUP_ID = process.env.FRENCH_ONLY_GROUP_ID; // 環境変数で設定
+
 // Gemini APIの設定
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
@@ -100,7 +103,101 @@ function detectLanguage(text) {
   return detectLanguageFromText(text);
 }
 
-// Gemini APIを使用して一括翻訳する関数
+// Gemini APIを使用して言語判定と一括翻訳を同時に行う関数
+async function translateWithGeminiBatchAndDetect(text, groupId = null) {
+  try {
+    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    
+    const languageNames = {
+      'ja': '日本語',
+      'ko': '한국어', 
+      'zh': '中文',
+      'en': 'English',
+      'fr': 'Français'
+    };
+    
+    // 特定グループかどうかで翻訳対象言語を決定
+    let availableLanguages, targetLanguageDescription;
+    if (groupId === FRENCH_ONLY_GROUP_ID) {
+      availableLanguages = ['ja', 'fr'];
+      targetLanguageDescription = '日本語とフランス語のみ';
+    } else {
+      availableLanguages = ['ja', 'ko', 'zh', 'en'];
+      targetLanguageDescription = '日本語、韓国語、中国語、英語';
+    }
+    
+    const prompt = `以下のテキストの言語を判定し、適切な言語に翻訳してください。
+対象言語：${targetLanguageDescription}
+
+ルール：
+1. 入力テキストの言語を判定
+2. その言語以外の対象言語すべてに翻訳
+3. JSON形式で結果を返す（他の文字は含めない）
+
+JSON形式例：
+{
+  "detected_language": "ja",
+  "translations": {
+    "fr": "翻訳結果"
+  }
+}
+
+翻訳対象テキスト：
+${text}`;
+    
+    console.log('Gemini言語判定+一括翻訳を実行中...');
+    
+    const result = await model.generateContent(prompt);
+    const response = await result.response;
+    const responseText = response.text().trim();
+    
+    console.log('Gemini APIレスポンス:', responseText);
+    
+    // JSONをパース
+    try {
+      let cleanedText = responseText.replace(/```json\s*/, '').replace(/```\s*$/, '');
+      cleanedText = cleanedText.trim();
+      
+      const result = JSON.parse(cleanedText);
+      
+      if (result.detected_language && result.translations) {
+        console.log(`AI言語判定結果: ${result.detected_language}`);
+        return {
+          sourceLang: result.detected_language,
+          translations: result.translations
+        };
+      }
+      
+      return null;
+    } catch (parseError) {
+      console.error('JSON解析エラー:', parseError.message);
+      
+      // 正規表現でJSONを抽出する最後の試み
+      try {
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          const result = JSON.parse(jsonMatch[0]);
+          if (result.detected_language && result.translations) {
+            return {
+              sourceLang: result.detected_language,
+              translations: result.translations
+            };
+          }
+        }
+      } catch (regexParseError) {
+        console.error('正規表現でのJSON抽出も失敗:', regexParseError.message);
+      }
+      
+      return null;
+    }
+    
+  } catch (error) {
+    console.error('Gemini API言語判定+翻訳エラー:', error);
+    return null;
+  }
+}
+
+// Gemini APIを使用して一括翻訳する関数（フォールバック用）
 async function translateWithGeminiBatch(text, targetLanguages) {
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
@@ -109,7 +206,8 @@ async function translateWithGeminiBatch(text, targetLanguages) {
       'ja': '日本語',
       'ko': '한국어', 
       'zh': '中文',
-      'en': 'English'
+      'en': 'English',
+      'fr': 'Français'
     };
     
     // 対象言語のリストを作成
@@ -172,7 +270,8 @@ async function translateWithGemini(text, targetLang) {
       'ja': '日本語',
       'ko': '한국어',
       'zh': '中文',
-      'en': 'English'
+      'en': 'English',
+      'fr': 'Français'
     };
     
     const prompt = `以下のテキストを${languageNames[targetLang]}に翻訳してください。翻訳結果のみを返してください：\n\n${text}`;
@@ -237,24 +336,64 @@ async function translateText(text, targetLang) {
   return null;
 }
 
-// 複数言語に翻訳する関数
-async function translateToMultipleLanguages(text, sourceLang) {
+// AI言語判定+翻訳を実行する関数
+async function translateWithAIDetection(text, groupId = null) {
+  // まずAI言語判定+一括翻訳を試行
+  console.log('AI言語判定+一括翻訳を試行中...');
+  const aiResult = await translateWithGeminiBatchAndDetect(text, groupId);
+  
+  if (aiResult && aiResult.sourceLang && aiResult.translations && Object.keys(aiResult.translations).length > 0) {
+    console.log('AI言語判定+一括翻訳が成功');
+    return {
+      sourceLang: aiResult.sourceLang,
+      translations: aiResult.translations
+    };
+  }
+  
+  // AIが失敗した場合はフォールバック（従来の方式）
+  console.log('AI言語判定+翻訳が失敗、フォールバック方式を使用');
+  const sourceLang = await detectLanguage(text);
+  const translations = await translateToMultipleLanguages(text, sourceLang, groupId);
+  
+  return {
+    sourceLang: sourceLang,
+    translations: translations
+  };
+}
+
+// 複数言語に翻訳する関数（フォールバック用）
+async function translateToMultipleLanguages(text, sourceLang, groupId = null) {
   let targetLanguages = [];
   
-  // 入力言語に基づいて翻訳対象言語を決定
-  switch (sourceLang) {
-    case 'ja':
-      targetLanguages = ['ko', 'zh', 'en'];
-      break;
-    case 'ko':
-      targetLanguages = ['ja', 'zh', 'en'];
-      break;
-    case 'zh':
-      targetLanguages = ['ja', 'ko', 'en'];
-      break;
-    default:
-      // その他の言語（英語など）
-      targetLanguages = ['ja', 'ko', 'zh'];
+  // 特定のグループIDの場合は日本語とフランス語のみ
+  if (groupId === FRENCH_ONLY_GROUP_ID) {
+    switch (sourceLang) {
+      case 'ja':
+        targetLanguages = ['fr'];
+        break;
+      case 'fr':
+        targetLanguages = ['ja'];
+        break;
+      default:
+        // その他の言語の場合は日本語とフランス語両方に翻訳
+        targetLanguages = ['ja', 'fr'];
+    }
+  } else {
+    // 通常のグループの場合は従来通り
+    switch (sourceLang) {
+      case 'ja':
+        targetLanguages = ['ko', 'zh', 'en'];
+        break;
+      case 'ko':
+        targetLanguages = ['ja', 'zh', 'en'];
+        break;
+      case 'zh':
+        targetLanguages = ['ja', 'ko', 'en'];
+        break;
+      default:
+        // その他の言語（英語など）
+        targetLanguages = ['ja', 'ko', 'zh'];
+    }
   }
   
   // まずGeminiで一括翻訳を試行
@@ -286,7 +425,8 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
     'ja': '🇯🇵 日本語',
     'ko': '🇰🇷 한국어',
     'zh': '🇹🇼 中文',
-    'en': '🇺🇸 English'
+    'en': '🇺🇸 English',
+    'fr': '🇫🇷 Français'
   };
   
   const contents = [
@@ -385,8 +525,17 @@ async function handleWebhook(req, res) {
           
           // グループチャットのみに制限
           if (event.source.type !== 'group') {
+            console.log('グループチャット以外のメッセージのため処理をスキップ');
             return;
           }
+          
+          // グループIDをログに出力
+          const groupId = event.source.groupId;
+          console.log(`=== グループ情報 ===`);
+          console.log(`グループID: ${groupId}`);
+          console.log(`特定グループID設定: ${FRENCH_ONLY_GROUP_ID}`);
+          console.log(`フランス語専用グループ判定: ${groupId === FRENCH_ONLY_GROUP_ID ? 'YES' : 'NO'}`);
+          console.log(`==================`);
           
           const text = event.message.text.trim();
           
@@ -409,13 +558,14 @@ async function handleWebhook(req, res) {
             return;
           }
           
-          // 言語を検出
-          const sourceLang = detectLanguage(text);
-          console.log(`検出された言語: ${sourceLang}`);
           console.log(`翻訳対象テキスト: "${text}"`);
           
-          // 翻訳実行
-          const translations = await translateToMultipleLanguages(text, sourceLang);
+          // AI言語判定+翻訳実行
+          const result = await translateWithAIDetection(text, groupId);
+          const sourceLang = result.sourceLang;
+          const translations = result.translations;
+          
+          console.log(`検出された言語: ${sourceLang}`);
           
           if (Object.keys(translations).length === 0) {
             console.log('翻訳結果が空です');
