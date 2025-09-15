@@ -529,6 +529,9 @@ async function handleWebhook(req, res) {
             return;
           }
           
+          // グループIDをログに出力
+          const groupId = event.source.groupId;
+          
           const text = event.message.text.trim();
           
           // 空のメッセージは無視
