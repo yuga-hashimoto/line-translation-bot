@@ -17,7 +17,7 @@ const config = {
 };
 
 // 特定のグループIDでの翻訳設定
-const FRENCH_ONLY_GROUP_ID = process.env.FRENCH_ONLY_GROUP_ID; // 環境変数で設定
+const FRENCH_ONLY_GROUP_ID = 'C40b7245622ac6e6ec1e6c1def21881e2'; // ハードコード設定
 
 // Gemini APIの設定
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
