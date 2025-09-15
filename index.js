@@ -529,14 +529,6 @@ async function handleWebhook(req, res) {
             return;
           }
           
-          // グループIDをログに出力
-          const groupId = event.source.groupId;
-          console.log(`=== グループ情報 ===`);
-          console.log(`グループID: ${groupId}`);
-          console.log(`特定グループID設定: ${FRENCH_ONLY_GROUP_ID}`);
-          console.log(`フランス語専用グループ判定: ${groupId === FRENCH_ONLY_GROUP_ID ? 'YES' : 'NO'}`);
-          console.log(`==================`);
-          
           const text = event.message.text.trim();
           
           // 空のメッセージは無視
