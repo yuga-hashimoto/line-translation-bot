@@ -17,7 +17,7 @@ const config = {
 };
 
 // 特定のグループIDでの翻訳設定
-const FRENCH_ONLY_GROUP_ID = 'C40b7245622ac6e6ec1e6ec1e6c1def21881e2'; // ハードコード設定
+const FRENCH_ONLY_GROUP_ID = 'C40b7245622ac6e6ec1e6c1def21881e2'; // ハードコード設定
 
 // Geminiクォータエラーフラグ
 let geminiQuotaExceeded = false;
