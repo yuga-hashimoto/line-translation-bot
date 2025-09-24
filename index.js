@@ -123,32 +123,36 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
       'en': 'English',
       'fr': 'Français',
       'th': 'ภาษาไทย',
-      'zh': '中文'
+      'zh-TW': '繁體中文'
     };
     
     // 特定グループかどうかで翻訳対象言語を決定
     let availableLanguages, targetLanguageDescription;
     if (groupId === FRENCH_ONLY_GROUP_ID) {
-      availableLanguages = ['ja', 'fr', 'en', 'zh'];
-      targetLanguageDescription = '日本語、フランス語、英語、台湾語';
+      availableLanguages = ['ja', 'fr', 'en', 'zh-TW'];
+      targetLanguageDescription = '日本語、フランス語、英語、台湾語（繁体字中国語）';
       } else {
-        availableLanguages = ['ja', 'ko', 'zh', 'en'];
-        targetLanguageDescription = '日本語、韓国語、台湾語、英語';
+        availableLanguages = ['ja', 'ko', 'zh-TW', 'en'];
+        targetLanguageDescription = '日本語、韓国語、台湾語（繁体字中国語）、英語';
       }
     
     const prompt = `以下のテキストの言語を判定し、適切な言語に翻訳してください。
 対象言語：${targetLanguageDescription}
 
-ルール：
+重要なルール：
 1. 入力テキストの言語を判定
 2. その言語以外の対象言語すべてに翻訳
 3. JSON形式で結果を返す（他の文字は含めない）
+4. 言語コードは厳密に以下のみ使用: ja, ko, en, fr, zh-TW
+5. 台湾語（繁体字中国語）は必ず "zh-TW" のみ使用
+6. 各言語につき1つの翻訳のみ提供する
 
-JSON形式例：
+正しいJSON形式（これ以外は受け付けません）：
 {
   "detected_language": "ja",
   "translations": {
-    "fr": "翻訳結果"
+    "en": "English translation",
+    "zh-TW": "中文翻譯"
   }
 }
 
@@ -173,15 +177,44 @@ ${text}`;
       if (result.detected_language && result.translations) {
         console.log(`AI言語判定結果: ${result.detected_language}`);
         
-        // Geminiが返すキーを統一（zh-TW -> zh）
+        // Geminiが返すキーを統一（zh, zh-CN -> zh-TW）
         const normalizedTranslations = {};
+        console.log('正規化前の翻訳結果:', result.translations);
+        
         for (const [key, value] of Object.entries(result.translations)) {
-          const normalizedKey = key === 'zh-TW' ? 'zh' : key;
-          normalizedTranslations[normalizedKey] = value;
+          let normalizedKey = key;
+          // 中国語の各種バリエーションをzh-TWに統一
+          if (key === 'zh' || key === 'zh-CN' || key === 'zh-Hans' || key === 'zh-Hant') {
+            console.log(`言語コード正規化: ${key} -> zh-TW`);
+            normalizedKey = 'zh-TW';
+          }
+          
+          // 既に同じキーが存在する場合は、より短い（一般的な）翻訳を優先
+          if (normalizedTranslations[normalizedKey]) {
+            console.log(`重複キー検出: ${normalizedKey}, 既存: "${normalizedTranslations[normalizedKey]}", 新規: "${value}"`);
+            if (value.length < normalizedTranslations[normalizedKey].length) {
+              console.log('より短い翻訳を採用');
+              normalizedTranslations[normalizedKey] = value;
+            } else {
+              console.log('既存の翻訳を維持');
+            }
+          } else {
+            normalizedTranslations[normalizedKey] = value;
+          }
+        }
+        
+        console.log('正規化後の翻訳結果:', normalizedTranslations);
+        
+        // detected_languageも正規化
+        let normalizedSourceLang = result.detected_language;
+        if (result.detected_language === 'zh' || result.detected_language === 'zh-CN' || 
+            result.detected_language === 'zh-Hans' || result.detected_language === 'zh-Hant') {
+          console.log(`ソース言語コード正規化: ${result.detected_language} -> zh-TW`);
+          normalizedSourceLang = 'zh-TW';
         }
         
         return {
-          sourceLang: result.detected_language,
+          sourceLang: normalizedSourceLang,
           translations: normalizedTranslations
         };
       }
@@ -196,15 +229,35 @@ ${text}`;
         if (jsonMatch) {
           const result = JSON.parse(jsonMatch[0]);
           if (result.detected_language && result.translations) {
-            // Geminiが返すキーを統一（zh-TW -> zh）
+            // Geminiが返すキーを統一（zh, zh-CN -> zh-TW）
             const normalizedTranslations = {};
             for (const [key, value] of Object.entries(result.translations)) {
-              const normalizedKey = key === 'zh-TW' ? 'zh' : key;
-              normalizedTranslations[normalizedKey] = value;
+              let normalizedKey = key;
+              // 中国語の各種バリエーションをzh-TWに統一
+              if (key === 'zh' || key === 'zh-CN' || key === 'zh-Hans' || key === 'zh-Hant') {
+                normalizedKey = 'zh-TW';
+              }
+              
+              // 既に同じキーが存在する場合は、より短い（一般的な）翻訳を優先
+              if (normalizedTranslations[normalizedKey]) {
+                if (value.length < normalizedTranslations[normalizedKey].length) {
+                  normalizedTranslations[normalizedKey] = value;
+                }
+              } else {
+                normalizedTranslations[normalizedKey] = value;
+              }
+            }
+            
+            // detected_languageも正規化
+            let normalizedSourceLang = result.detected_language;
+            if (result.detected_language === 'zh' || result.detected_language === 'zh-CN' || 
+                result.detected_language === 'zh-Hans' || result.detected_language === 'zh-Hant') {
+              console.log(`ソース言語コード正規化: ${result.detected_language} -> zh-TW`);
+              normalizedSourceLang = 'zh-TW';
             }
             
             return {
-              sourceLang: result.detected_language,
+              sourceLang: normalizedSourceLang,
               translations: normalizedTranslations
             };
           }
@@ -246,7 +299,7 @@ async function translateWithGeminiBatch(text, targetLanguages) {
       'en': 'English',
       'fr': 'Français',
       'th': 'ภาษาไทย',
-      'zh': '中文'
+      'zh-TW': '繁體中文'
     };
     
     // 対象言語のリストを作成
@@ -332,7 +385,7 @@ async function translateWithDeepL(text, targetLang) {
   try {
     // DeepL APIの言語コード変換
     const deeplLangMap = {
-      'zh': 'ZH', // 中国語（DeepLでは繁体字・簡体字を自動判別）
+      'zh-TW': 'ZH', // 台湾語（繁体字中国語）
       'ja': 'JA',
       'ko': 'KO',
       'en': 'EN',
@@ -442,36 +495,36 @@ async function translateToMultipleLanguages(text, sourceLang, groupId = null) {
   if (groupId === FRENCH_ONLY_GROUP_ID) {
     switch (sourceLang) {
         case 'ja':
-          targetLanguages = ['fr', 'en', 'zh'];
+          targetLanguages = ['fr', 'en', 'zh-TW'];
           break;
         case 'fr':
-          targetLanguages = ['ja', 'en', 'zh'];
+          targetLanguages = ['ja', 'en', 'zh-TW'];
           break;
         case 'en':
-          targetLanguages = ['ja', 'fr', 'zh'];
+          targetLanguages = ['ja', 'fr', 'zh-TW'];
           break;
-        case 'zh':
+        case 'zh-TW':
           targetLanguages = ['ja', 'fr', 'en'];
           break;
         default:
           // その他の言語の場合は4言語すべてに翻訳
-          targetLanguages = ['ja', 'fr', 'en', 'zh'];
+          targetLanguages = ['ja', 'fr', 'en', 'zh-TW'];
     }
   } else {
     // 通常のグループの場合は従来通り
     switch (sourceLang) {
       case 'ja':
-        targetLanguages = ['ko', 'zh', 'en'];
+        targetLanguages = ['ko', 'zh-TW', 'en'];
         break;
       case 'ko':
-        targetLanguages = ['ja', 'zh', 'en'];
+        targetLanguages = ['ja', 'zh-TW', 'en'];
         break;
-      case 'zh':
+      case 'zh-TW':
         targetLanguages = ['ja', 'ko', 'en'];
         break;
       default:
         // その他の言語（英語など）
-        targetLanguages = ['ja', 'ko', 'zh'];
+        targetLanguages = ['ja', 'ko', 'zh-TW'];
     }
   }
   
@@ -506,7 +559,7 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
     'en': '🇺🇸 English',
     'fr': '🇫🇷 Français',
     'th': '🇹🇭 ภาษาไทย',
-    'zh': '🇹🇼 中文'
+    'zh-TW': '🇹🇼 繁體中文'
   };
   
   // テキストを制限内に収める（LINE Flex Messageの制限対応）
@@ -739,7 +792,7 @@ async function handleWebhook(req, res) {
                     'en': '🇺🇸 English',
                     'fr': '🇫🇷 Français',
                     'th': '🇹🇭 ภาษาไทย',
-                    'zh': '🇹🇼 中文'
+                    'zh-TW': '🇹🇼 繁體中文'
                   };
                   return `${langNames[lang]}: ${text}`;
                 }).join('\n\n')}`
