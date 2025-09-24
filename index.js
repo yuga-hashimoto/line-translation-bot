@@ -65,7 +65,7 @@ function detectLanguageFromText(text) {
   if (koreanRatio >= 0.2) return 'ko';
   if (hiraganaRatio >= 0.05) return 'ja'; // ひらがなは日本語の確実な指標
   if (japaneseRatio >= 0.2) return 'ja'; // カタカナメイン
-  if (chineseRatio >= 0.2 && hiraganaRatio === 0) return 'zh'; // 台湾語の閾値を下げる
+  if (chineseRatio >= 0.2 && hiraganaRatio === 0) return 'zh'; // 中国語の閾値を下げる
   if (latinRatio >= 0.6) return 'en';
   
   return 'en'; // デフォルト
@@ -88,8 +88,8 @@ function detectLanguage(text) {
       const languageMap = {
         'jpn': 'ja',
         'kor': 'ko', 
-        'cmn': 'zh', // 中国語を台湾語として扱う
-        'zho': 'zh', // 中国語を台湾語として扱う
+        'cmn': 'zh', // 中国語として扱う
+        'zho': 'zh', // 中国語として扱う
         'eng': 'en'
       };
       
@@ -131,10 +131,10 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
     if (groupId === FRENCH_ONLY_GROUP_ID) {
       availableLanguages = ['ja', 'fr', 'en', 'zh'];
       targetLanguageDescription = '日本語、フランス語、英語、台湾語';
-    } else {
-      availableLanguages = ['ja', 'ko', 'zh', 'en'];
-      targetLanguageDescription = '日本語、韓国語、台湾語、英語';
-    }
+      } else {
+        availableLanguages = ['ja', 'ko', 'zh', 'en'];
+        targetLanguageDescription = '日本語、韓国語、台湾語、英語';
+      }
     
     const prompt = `以下のテキストの言語を判定し、適切な言語に翻訳してください。
 対象言語：${targetLanguageDescription}
@@ -172,9 +172,17 @@ ${text}`;
       
       if (result.detected_language && result.translations) {
         console.log(`AI言語判定結果: ${result.detected_language}`);
+        
+        // Geminiが返すキーを統一（zh-TW -> zh）
+        const normalizedTranslations = {};
+        for (const [key, value] of Object.entries(result.translations)) {
+          const normalizedKey = key === 'zh-TW' ? 'zh' : key;
+          normalizedTranslations[normalizedKey] = value;
+        }
+        
         return {
           sourceLang: result.detected_language,
-          translations: result.translations
+          translations: normalizedTranslations
         };
       }
       
@@ -188,9 +196,16 @@ ${text}`;
         if (jsonMatch) {
           const result = JSON.parse(jsonMatch[0]);
           if (result.detected_language && result.translations) {
+            // Geminiが返すキーを統一（zh-TW -> zh）
+            const normalizedTranslations = {};
+            for (const [key, value] of Object.entries(result.translations)) {
+              const normalizedKey = key === 'zh-TW' ? 'zh' : key;
+              normalizedTranslations[normalizedKey] = value;
+            }
+            
             return {
               sourceLang: result.detected_language,
-              translations: result.translations
+              translations: normalizedTranslations
             };
           }
         }
@@ -426,21 +441,21 @@ async function translateToMultipleLanguages(text, sourceLang, groupId = null) {
   // 特定のグループIDの場合は日本語、フランス語、タイ語、台湾語
   if (groupId === FRENCH_ONLY_GROUP_ID) {
     switch (sourceLang) {
-      case 'ja':
-        targetLanguages = ['fr', 'en', 'zh'];
-        break;
-      case 'fr':
-        targetLanguages = ['ja', 'en', 'zh'];
-        break;
-      case 'th':
-        targetLanguages = ['ja', 'fr', 'zh'];
-        break;
-      case 'zh':
-        targetLanguages = ['ja', 'fr', 'en'];
-        break;
-      default:
-        // その他の言語の場合は4言語すべてに翻訳
-        targetLanguages = ['ja', 'fr', 'en', 'zh'];
+        case 'ja':
+          targetLanguages = ['fr', 'en', 'zh'];
+          break;
+        case 'fr':
+          targetLanguages = ['ja', 'en', 'zh'];
+          break;
+        case 'en':
+          targetLanguages = ['ja', 'fr', 'zh'];
+          break;
+        case 'zh':
+          targetLanguages = ['ja', 'fr', 'en'];
+          break;
+        default:
+          // その他の言語の場合は4言語すべてに翻訳
+          targetLanguages = ['ja', 'fr', 'en', 'zh'];
     }
   } else {
     // 通常のグループの場合は従来通り
