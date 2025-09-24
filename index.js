@@ -367,6 +367,8 @@ async function translateWithDeepL(text, targetLang) {
 
 // 翻訳を試行する関数（Gemini -> DeepLの順）
 async function translateText(text, targetLang) {
+  console.log(`=== 翻訳開始: "${text}" -> ${targetLang} ===`);
+  
   // まずGeminiで試行
   console.log(`Geminiで翻訳を試行: ${text} -> ${targetLang}`);
   let result = await translateWithGemini(text, targetLang);
@@ -377,7 +379,7 @@ async function translateText(text, targetLang) {
   }
   
   // Geminiが失敗した場合はDeepLをフォールバック
-  console.log('Geminiが失敗、DeepLをフォールバックとして使用');
+  console.log(`Geminiが失敗、DeepLをフォールバックとして使用: ${text} -> ${targetLang}`);
   result = await translateWithDeepL(text, targetLang);
   
   if (result) {
@@ -394,6 +396,9 @@ async function translateWithAIDetection(text, groupId = null) {
   // まずAI言語判定+一括翻訳を試行
   console.log('AI言語判定+一括翻訳を試行中...');
   const aiResult = await translateWithGeminiBatchAndDetect(text, groupId);
+  
+  console.log('aiResult:', aiResult);
+  console.log('aiResult type:', typeof aiResult);
   
   if (aiResult && aiResult.sourceLang && aiResult.translations && Object.keys(aiResult.translations).length > 0) {
     console.log('AI言語判定+一括翻訳が成功');
