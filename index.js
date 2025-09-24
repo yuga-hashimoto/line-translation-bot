@@ -509,6 +509,12 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
     'zh': '🇹🇼 中文'
   };
   
+  // テキストを制限内に収める（LINE Flex Messageの制限対応）
+  const truncateText = (text, maxLength = 2000) => {
+    if (!text) return '';
+    return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
+  };
+  
   const contents = [
     {
       type: 'text',
@@ -519,8 +525,12 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
     }
   ];
   
-  // 翻訳結果を追加
-  Object.keys(translations).forEach(lang => {
+  // 翻訳結果を追加（最大3つまでに制限してメッセージサイズを抑制）
+  const translationEntries = Object.entries(translations).slice(0, 3);
+  
+  translationEntries.forEach(([lang, text]) => {
+    const truncatedText = truncateText(text, 300); // 各翻訳を300文字以内に制限
+    
     contents.push(
       {
         type: 'separator',
@@ -528,7 +538,7 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
       },
       {
         type: 'text',
-        text: languageNames[lang],
+        text: languageNames[lang] || lang,
         weight: 'bold',
         size: 'xs',
         color: '#666666',
@@ -536,7 +546,7 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
       },
       {
         type: 'text',
-        text: translations[lang],
+        text: truncatedText,
         size: 'md',
         wrap: true,
         margin: 'sm'
@@ -544,18 +554,34 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
     );
   });
   
-  return {
-    type: 'flex',
-    altText: originalText,
-    contents: {
-      type: 'bubble',
-      body: {
-        type: 'box',
-        layout: 'vertical',
-        contents: contents
+  // altTextも制限内に収める
+  const altText = truncateText(originalText, 400);
+  
+  try {
+    return {
+      type: 'flex',
+      altText: altText,
+      contents: {
+        type: 'bubble',
+        body: {
+          type: 'box',
+          layout: 'vertical',
+          contents: contents,
+          spacing: 'sm',
+          paddingAll: 'lg'
+        }
       }
-    }
-  };
+    };
+  } catch (error) {
+    console.error('Flex Message生成エラー:', error);
+    // エラーの場合はシンプルなテキストメッセージにフォールバック
+    return {
+      type: 'text',
+      text: `🌍 翻訳結果:\n\n${Object.entries(translations).map(([lang, text]) => 
+        `${languageNames[lang] || lang}: ${truncateText(text, 200)}`
+      ).join('\n\n')}`
+    };
+  }
 }
 
 // Webhook処理関数
@@ -587,35 +613,69 @@ async function handleWebhook(req, res) {
       console.warn('署名ヘッダーがありません');
     }
     
+    // リクエストボディの詳細ログ
+    console.log('リクエストボディ:', JSON.stringify(req.body, null, 2));
+    console.log('リクエストヘッダー:', JSON.stringify(req.headers, null, 2));
+    
+    if (!req.body) {
+      console.error('リクエストボディが空です');
+      return res.status(400).json({ error: 'Request body is empty' });
+    }
+    
     if (!req.body.events || !Array.isArray(req.body.events)) {
       console.log('イベントがありません');
       return res.status(200).json({ message: 'No events found' });
     }
+    
+    if (req.body.events.length === 0) {
+      console.log('イベント配列が空です');
+      return res.status(200).json({ message: 'Empty events array' });
+    }
 
     await Promise.all(
-      req.body.events.map(async (event) => {
+      req.body.events.map(async (event, index) => {
         try {
+          console.log(`=== イベント ${index + 1} 処理開始 ===`);
+          console.log('イベント詳細:', JSON.stringify(event, null, 2));
+          
           if (event.type !== 'message') {
+            console.log(`イベント ${index + 1}: メッセージイベントではありません (${event.type})`);
+            return;
+          }
+          
+          if (!event.message) {
+            console.log(`イベント ${index + 1}: メッセージオブジェクトがありません`);
             return;
           }
           
           if (event.message.type !== 'text') {
+            console.log(`イベント ${index + 1}: テキストメッセージではありません (${event.message.type})`);
             return;
           }
           
           // グループチャットのみに制限
           if (event.source.type !== 'group') {
-            console.log('グループチャット以外のメッセージのため処理をスキップ');
+            console.log(`イベント ${index + 1}: グループチャット以外のメッセージのため処理をスキップ (${event.source.type})`);
             return;
           }
           
           // グループIDをログに出力
           const groupId = event.source.groupId;
+          console.log(`イベント ${index + 1}: グループID = ${groupId}`);
           
           const text = event.message.text.trim();
+          console.log(`イベント ${index + 1}: メッセージテキスト = "${text}"`);
+          
+          // replyTokenの存在確認
+          if (!event.replyToken) {
+            console.error(`イベント ${index + 1}: replyTokenがありません`);
+            return;
+          }
+          console.log(`イベント ${index + 1}: replyToken = ${event.replyToken}`);
           
           // 空のメッセージは無視
           if (!text) {
+            console.log(`イベント ${index + 1}: 空のメッセージのためスキップ`);
             return;
           }
           
@@ -654,7 +714,42 @@ async function handleWebhook(req, res) {
           // 翻訳結果メッセージを生成
           const replyMessage = generateTranslationMessage(text, sourceLang, translations);
           
-          await client.replyMessage(event.replyToken, replyMessage);
+          console.log('送信するメッセージ:', JSON.stringify(replyMessage, null, 2));
+          
+          try {
+            await client.replyMessage(event.replyToken, replyMessage);
+            console.log('メッセージ送信成功');
+          } catch (replyError) {
+            console.error('メッセージ送信エラー:', replyError);
+            console.error('エラー詳細:', {
+              status: replyError.response?.status,
+              statusText: replyError.response?.statusText,
+              data: replyError.response?.data,
+              headers: replyError.response?.headers
+            });
+            
+            // フォールバック: シンプルなテキストメッセージを送信
+            try {
+              const fallbackMessage = {
+                type: 'text',
+                text: `🌍 翻訳結果:\n\n${Object.entries(translations).map(([lang, text]) => {
+                  const langNames = {
+                    'ja': '🇯🇵 日本語',
+                    'ko': '🇰🇷 한국어',
+                    'en': '🇺🇸 English',
+                    'fr': '🇫🇷 Français',
+                    'th': '🇹🇭 ภาษาไทย',
+                    'zh': '🇹🇼 中文'
+                  };
+                  return `${langNames[lang]}: ${text}`;
+                }).join('\n\n')}`
+              };
+              await client.replyMessage(event.replyToken, fallbackMessage);
+              console.log('フォールバックメッセージ送信成功');
+            } catch (fallbackError) {
+              console.error('フォールバックメッセージ送信も失敗:', fallbackError);
+            }
+          }
           
         } catch (err) {
           console.error('イベント処理中にエラーが発生しました:', err);
