@@ -317,7 +317,7 @@ async function translateWithDeepL(text, targetLang) {
   try {
     // DeepL APIの言語コード変換
     const deeplLangMap = {
-      'zh': 'ZH-HANT', // 中国語（繁体字）
+      'zh': 'ZH', // 中国語（DeepLでは繁体字・簡体字を自動判別）
       'ja': 'JA',
       'ko': 'KO',
       'en': 'EN',
@@ -340,6 +340,11 @@ async function translateWithDeepL(text, targetLang) {
     params.append('text', text);
     params.append('target_lang', deeplTargetLang);
     
+    console.log('DeepL APIに送信するパラメータ:');
+    console.log('- text:', text);
+    console.log('- target_lang:', deeplTargetLang);
+    console.log('- auth_key:', DEEPL_API_KEY ? '設定済み' : '未設定');
+    
     const response = await axios.post(DEEPL_API_URL, params, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
@@ -353,6 +358,9 @@ async function translateWithDeepL(text, targetLang) {
     return null;
   } catch (error) {
     console.error('DeepL API翻訳エラー:', error);
+    console.error('DeepL APIエラー詳細:', error.response?.data);
+    console.error('DeepL APIステータス:', error.response?.status);
+    console.error('DeepL APIヘッダー:', error.response?.headers);
     return null;
   }
 }
