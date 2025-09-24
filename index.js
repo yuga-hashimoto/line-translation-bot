@@ -129,8 +129,8 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
     // 特定グループかどうかで翻訳対象言語を決定
     let availableLanguages, targetLanguageDescription;
     if (groupId === FRENCH_ONLY_GROUP_ID) {
-      availableLanguages = ['ja', 'fr', 'th', 'zh'];
-      targetLanguageDescription = '日本語、フランス語、タイ語、台湾語';
+      availableLanguages = ['ja', 'fr', 'en', 'zh'];
+      targetLanguageDescription = '日本語、フランス語、英語、台湾語';
     } else {
       availableLanguages = ['ja', 'ko', 'zh', 'en'];
       targetLanguageDescription = '日本語、韓国語、台湾語、英語';
@@ -315,10 +315,30 @@ async function translateWithGemini(text, targetLang) {
 // DeepL APIを使用して翻訳する関数（フォールバック用）
 async function translateWithDeepL(text, targetLang) {
   try {
+    // DeepL APIの言語コード変換
+    const deeplLangMap = {
+      'zh': 'ZH-HANT', // 中国語（繁体字）
+      'ja': 'JA',
+      'ko': 'KO',
+      'en': 'EN',
+      'fr': 'FR'
+      // 'th': タイ語はDeepL APIでサポートされていません
+    };
+    
+    const deeplTargetLang = deeplLangMap[targetLang];
+    
+    // DeepL APIでサポートされていない言語の場合
+    if (!deeplTargetLang) {
+      console.log(`DeepL APIは${targetLang}をサポートしていません`);
+      return null;
+    }
+    
+    console.log(`DeepL言語コード変換: ${targetLang} -> ${deeplTargetLang}`);
+    
     const params = new URLSearchParams();
     params.append('auth_key', DEEPL_API_KEY);
     params.append('text', text);
-    params.append('target_lang', targetLang.toUpperCase());
+    params.append('target_lang', deeplTargetLang);
     
     const response = await axios.post(DEEPL_API_URL, params, {
       headers: {
@@ -394,20 +414,20 @@ async function translateToMultipleLanguages(text, sourceLang, groupId = null) {
   if (groupId === FRENCH_ONLY_GROUP_ID) {
     switch (sourceLang) {
       case 'ja':
-        targetLanguages = ['fr', 'th', 'zh'];
+        targetLanguages = ['fr', 'en', 'zh'];
         break;
       case 'fr':
-        targetLanguages = ['ja', 'th', 'zh'];
+        targetLanguages = ['ja', 'en', 'zh'];
         break;
       case 'th':
         targetLanguages = ['ja', 'fr', 'zh'];
         break;
       case 'zh':
-        targetLanguages = ['ja', 'fr', 'th'];
+        targetLanguages = ['ja', 'fr', 'en'];
         break;
       default:
         // その他の言語の場合は4言語すべてに翻訳
-        targetLanguages = ['ja', 'fr', 'th', 'zh'];
+        targetLanguages = ['ja', 'fr', 'en', 'zh'];
     }
   } else {
     // 通常のグループの場合は従来通り
