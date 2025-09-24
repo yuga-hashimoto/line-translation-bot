@@ -17,7 +17,10 @@ const config = {
 };
 
 // 特定のグループIDでの翻訳設定
-const FRENCH_ONLY_GROUP_ID = 'C40b7245622ac6e6ec1e6c1def21881e2'; // ハードコード設定
+const FRENCH_ONLY_GROUP_ID = 'C40b7245622ac6e6ec1e6ec1e6c1def21881e2'; // ハードコード設定
+
+// Geminiクォータエラーフラグ
+let geminiQuotaExceeded = false;
 
 // Gemini APIの設定
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -28,6 +31,12 @@ const DEEPL_API_KEY = process.env.DEEPL_API_KEY;
 const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
 
 const client = new line.Client(config);
+
+// クォータエラーかどうかを判定する関数
+function isQuotaError(error) {
+  return error.message && error.message.includes('429 Too Many Requests') && 
+         error.message.includes('quota');
+}
 
 // 改良版テキストから言語を検出する関数（短文・フォールバック用）
 function detectLanguageFromText(text) {
@@ -56,7 +65,7 @@ function detectLanguageFromText(text) {
   if (koreanRatio >= 0.2) return 'ko';
   if (hiraganaRatio >= 0.05) return 'ja'; // ひらがなは日本語の確実な指標
   if (japaneseRatio >= 0.2) return 'ja'; // カタカナメイン
-  if (chineseRatio >= 0.2 && hiraganaRatio === 0) return 'zh-tw'; // 台湾語の閾値を下げる
+  if (chineseRatio >= 0.2 && hiraganaRatio === 0) return 'zh'; // 台湾語の閾値を下げる
   if (latinRatio >= 0.6) return 'en';
   
   return 'en'; // デフォルト
@@ -79,8 +88,8 @@ function detectLanguage(text) {
       const languageMap = {
         'jpn': 'ja',
         'kor': 'ko', 
-        'cmn': 'zh-tw', // 中国語を台湾語として扱う
-        'zho': 'zh-tw', // 中国語を台湾語として扱う
+        'cmn': 'zh', // 中国語を台湾語として扱う
+        'zho': 'zh', // 中国語を台湾語として扱う
         'eng': 'en'
       };
       
@@ -114,16 +123,16 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
       'en': 'English',
       'fr': 'Français',
       'th': 'ภาษาไทย',
-      'zh-tw': '繁體中文'
+      'zh': '中文'
     };
     
     // 特定グループかどうかで翻訳対象言語を決定
     let availableLanguages, targetLanguageDescription;
     if (groupId === FRENCH_ONLY_GROUP_ID) {
-      availableLanguages = ['ja', 'fr', 'th', 'zh-tw'];
+      availableLanguages = ['ja', 'fr', 'th', 'zh'];
       targetLanguageDescription = '日本語、フランス語、タイ語、台湾語';
     } else {
-      availableLanguages = ['ja', 'ko', 'zh-tw', 'en'];
+      availableLanguages = ['ja', 'ko', 'zh', 'en'];
       targetLanguageDescription = '日本語、韓国語、台湾語、英語';
     }
     
@@ -194,12 +203,25 @@ ${text}`;
     
   } catch (error) {
     console.error('Gemini API言語判定+翻訳エラー:', error);
+    
+    // クォータエラーの場合はフラグを設定
+    if (isQuotaError(error)) {
+      console.log('Geminiクォータエラーを検出、フラグを設定');
+      geminiQuotaExceeded = true;
+    }
+    
     return null;
   }
 }
 
 // Gemini APIを使用して一括翻訳する関数（フォールバック用）
 async function translateWithGeminiBatch(text, targetLanguages) {
+  // クォータエラーが発生している場合はスキップ
+  if (geminiQuotaExceeded) {
+    console.log('Geminiクォータエラーのため一括翻訳をスキップ');
+    return null;
+  }
+  
   try {
     const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
     
@@ -209,7 +231,7 @@ async function translateWithGeminiBatch(text, targetLanguages) {
       'en': 'English',
       'fr': 'Français',
       'th': 'ภาษาไทย',
-      'zh-tw': '繁體中文'
+      'zh': '中文'
     };
     
     // 対象言語のリストを作成
@@ -274,7 +296,7 @@ async function translateWithGemini(text, targetLang) {
       'en': 'English',
       'fr': 'Français',
       'th': 'ภาษาไทย',
-      'zh-tw': '繁體中文'
+      'zh': '中文'
     };
     
     const prompt = `以下のテキストを${languageNames[targetLang]}に翻訳してください。翻訳結果のみを返してください：\n\n${text}`;
@@ -372,36 +394,36 @@ async function translateToMultipleLanguages(text, sourceLang, groupId = null) {
   if (groupId === FRENCH_ONLY_GROUP_ID) {
     switch (sourceLang) {
       case 'ja':
-        targetLanguages = ['fr', 'th', 'zh-tw'];
+        targetLanguages = ['fr', 'th', 'zh'];
         break;
       case 'fr':
-        targetLanguages = ['ja', 'th', 'zh-tw'];
+        targetLanguages = ['ja', 'th', 'zh'];
         break;
       case 'th':
-        targetLanguages = ['ja', 'fr', 'zh-tw'];
+        targetLanguages = ['ja', 'fr', 'zh'];
         break;
-      case 'zh-tw':
+      case 'zh':
         targetLanguages = ['ja', 'fr', 'th'];
         break;
       default:
         // その他の言語の場合は4言語すべてに翻訳
-        targetLanguages = ['ja', 'fr', 'th', 'zh-tw'];
+        targetLanguages = ['ja', 'fr', 'th', 'zh'];
     }
   } else {
     // 通常のグループの場合は従来通り
     switch (sourceLang) {
       case 'ja':
-        targetLanguages = ['ko', 'zh-tw', 'en'];
+        targetLanguages = ['ko', 'zh', 'en'];
         break;
       case 'ko':
-        targetLanguages = ['ja', 'zh-tw', 'en'];
+        targetLanguages = ['ja', 'zh', 'en'];
         break;
-      case 'zh-tw':
+      case 'zh':
         targetLanguages = ['ja', 'ko', 'en'];
         break;
       default:
         // その他の言語（英語など）
-        targetLanguages = ['ja', 'ko', 'zh-tw'];
+        targetLanguages = ['ja', 'ko', 'zh'];
     }
   }
   
@@ -436,7 +458,7 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
     'en': '🇺🇸 English',
     'fr': '🇫🇷 Français',
     'th': '🇹🇭 ภาษาไทย',
-    'zh-tw': '🇹🇼 繁體中文'
+    'zh': '🇹🇼 中文'
   };
   
   const contents = [
