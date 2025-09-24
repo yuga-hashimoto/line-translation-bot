@@ -56,7 +56,7 @@ function detectLanguageFromText(text) {
   if (koreanRatio >= 0.2) return 'ko';
   if (hiraganaRatio >= 0.05) return 'ja'; // ひらがなは日本語の確実な指標
   if (japaneseRatio >= 0.2) return 'ja'; // カタカナメイン
-  if (chineseRatio >= 0.2 && hiraganaRatio === 0) return 'zh'; // 中国語の閾値を下げる
+  if (chineseRatio >= 0.2 && hiraganaRatio === 0) return 'zh-tw'; // 台湾語の閾値を下げる
   if (latinRatio >= 0.6) return 'en';
   
   return 'en'; // デフォルト
@@ -79,8 +79,8 @@ function detectLanguage(text) {
       const languageMap = {
         'jpn': 'ja',
         'kor': 'ko', 
-        'cmn': 'zh', // 北京官話
-        'zho': 'zh', // 中国語
+        'cmn': 'zh-tw', // 中国語を台湾語として扱う
+        'zho': 'zh-tw', // 中国語を台湾語として扱う
         'eng': 'en'
       };
       
@@ -111,19 +111,20 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
     const languageNames = {
       'ja': '日本語',
       'ko': '한국어', 
-      'zh': '中文',
       'en': 'English',
-      'fr': 'Français'
+      'fr': 'Français',
+      'th': 'ภาษาไทย',
+      'zh-tw': '繁體中文'
     };
     
     // 特定グループかどうかで翻訳対象言語を決定
     let availableLanguages, targetLanguageDescription;
     if (groupId === FRENCH_ONLY_GROUP_ID) {
-      availableLanguages = ['ja', 'fr'];
-      targetLanguageDescription = '日本語とフランス語のみ';
+      availableLanguages = ['ja', 'fr', 'th', 'zh-tw'];
+      targetLanguageDescription = '日本語、フランス語、タイ語、台湾語';
     } else {
-      availableLanguages = ['ja', 'ko', 'zh', 'en'];
-      targetLanguageDescription = '日本語、韓国語、中国語、英語';
+      availableLanguages = ['ja', 'ko', 'zh-tw', 'en'];
+      targetLanguageDescription = '日本語、韓国語、台湾語、英語';
     }
     
     const prompt = `以下のテキストの言語を判定し、適切な言語に翻訳してください。
@@ -205,9 +206,10 @@ async function translateWithGeminiBatch(text, targetLanguages) {
     const languageNames = {
       'ja': '日本語',
       'ko': '한국어', 
-      'zh': '中文',
       'en': 'English',
-      'fr': 'Français'
+      'fr': 'Français',
+      'th': 'ภาษาไทย',
+      'zh-tw': '繁體中文'
     };
     
     // 対象言語のリストを作成
@@ -269,9 +271,10 @@ async function translateWithGemini(text, targetLang) {
     const languageNames = {
       'ja': '日本語',
       'ko': '한국어',
-      'zh': '中文',
       'en': 'English',
-      'fr': 'Français'
+      'fr': 'Français',
+      'th': 'ภาษาไทย',
+      'zh-tw': '繁體中文'
     };
     
     const prompt = `以下のテキストを${languageNames[targetLang]}に翻訳してください。翻訳結果のみを返してください：\n\n${text}`;
@@ -365,34 +368,40 @@ async function translateWithAIDetection(text, groupId = null) {
 async function translateToMultipleLanguages(text, sourceLang, groupId = null) {
   let targetLanguages = [];
   
-  // 特定のグループIDの場合は日本語とフランス語のみ
+  // 特定のグループIDの場合は日本語、フランス語、タイ語、台湾語
   if (groupId === FRENCH_ONLY_GROUP_ID) {
     switch (sourceLang) {
       case 'ja':
-        targetLanguages = ['fr'];
+        targetLanguages = ['fr', 'th', 'zh-tw'];
         break;
       case 'fr':
-        targetLanguages = ['ja'];
+        targetLanguages = ['ja', 'th', 'zh-tw'];
+        break;
+      case 'th':
+        targetLanguages = ['ja', 'fr', 'zh-tw'];
+        break;
+      case 'zh-tw':
+        targetLanguages = ['ja', 'fr', 'th'];
         break;
       default:
-        // その他の言語の場合は日本語とフランス語両方に翻訳
-        targetLanguages = ['ja', 'fr'];
+        // その他の言語の場合は4言語すべてに翻訳
+        targetLanguages = ['ja', 'fr', 'th', 'zh-tw'];
     }
   } else {
     // 通常のグループの場合は従来通り
     switch (sourceLang) {
       case 'ja':
-        targetLanguages = ['ko', 'zh', 'en'];
+        targetLanguages = ['ko', 'zh-tw', 'en'];
         break;
       case 'ko':
-        targetLanguages = ['ja', 'zh', 'en'];
+        targetLanguages = ['ja', 'zh-tw', 'en'];
         break;
-      case 'zh':
+      case 'zh-tw':
         targetLanguages = ['ja', 'ko', 'en'];
         break;
       default:
         // その他の言語（英語など）
-        targetLanguages = ['ja', 'ko', 'zh'];
+        targetLanguages = ['ja', 'ko', 'zh-tw'];
     }
   }
   
@@ -424,9 +433,10 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
   const languageNames = {
     'ja': '🇯🇵 日本語',
     'ko': '🇰🇷 한국어',
-    'zh': '🇹🇼 中文',
     'en': '🇺🇸 English',
-    'fr': '🇫🇷 Français'
+    'fr': '🇫🇷 Français',
+    'th': '🇹🇭 ภาษาไทย',
+    'zh-tw': '🇹🇼 繁體中文'
   };
   
   const contents = [
