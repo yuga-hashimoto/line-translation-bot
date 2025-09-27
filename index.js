@@ -628,11 +628,13 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
   } catch (error) {
     console.error('Flex Message生成エラー:', error);
     // エラーの場合はシンプルなテキストメッセージにフォールバック
+    const fallbackText = `🌍 翻訳結果:\n\n${Object.entries(translations).map(([lang, text]) => 
+      `${languageNames[lang] || lang}: ${truncateText(text, 200)}`
+    ).join('\n\n')}`;
+    
     return {
       type: 'text',
-      text: `🌍 翻訳結果:\n\n${Object.entries(translations).map(([lang, text]) => 
-        `${languageNames[lang] || lang}: ${truncateText(text, 200)}`
-      ).join('\n\n')}`
+      text: fallbackText.length > 5000 ? fallbackText.substring(0, 4990) + '...' : fallbackText
     };
   }
 }
@@ -780,28 +782,8 @@ async function handleWebhook(req, res) {
               data: replyError.response?.data,
               headers: replyError.response?.headers
             });
-            
-            // フォールバック: シンプルなテキストメッセージを送信
-            try {
-              const fallbackMessage = {
-                type: 'text',
-                text: `🌍 翻訳結果:\n\n${Object.entries(translations).map(([lang, text]) => {
-                  const langNames = {
-                    'ja': '🇯🇵 日本語',
-                    'ko': '🇰🇷 한국어',
-                    'en': '🇺🇸 English',
-                    'fr': '🇫🇷 Français',
-                    'th': '🇹🇭 ภาษาไทย',
-                    'zh-TW': '🇹🇼 繁體中文'
-                  };
-                  return `${langNames[lang]}: ${text}`;
-                }).join('\n\n')}`
-              };
-              await client.replyMessage(event.replyToken, fallbackMessage);
-              console.log('フォールバックメッセージ送信成功');
-            } catch (fallbackError) {
-              console.error('フォールバックメッセージ送信も失敗:', fallbackError);
-            }
+            // フォールバックメッセージは送信せず、エラーログのみ出力
+            console.log('翻訳は成功しましたが、メッセージ送信に失敗しました');
           }
           
         } catch (err) {
