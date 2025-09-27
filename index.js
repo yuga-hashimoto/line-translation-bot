@@ -115,7 +115,7 @@ function detectLanguage(text) {
 // Gemini APIを使用して言語判定と一括翻訳を同時に行う関数
 async function translateWithGeminiBatchAndDetect(text, groupId = null) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
     
     const languageNames = {
       'ja': '日本語',
@@ -291,7 +291,7 @@ async function translateWithGeminiBatch(text, targetLanguages) {
   }
   
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
     
     const languageNames = {
       'ja': '日本語',
@@ -356,7 +356,7 @@ ${text}`;
 // 単一言語翻訳（フォールバック用）
 async function translateWithGemini(text, targetLang) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
     
     const languageNames = {
       'ja': '日本語',
