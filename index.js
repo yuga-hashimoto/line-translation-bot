@@ -769,8 +769,6 @@ async function handleWebhook(req, res) {
           // 翻訳結果メッセージを生成
           const replyMessage = generateTranslationMessage(text, sourceLang, translations);
           
-          console.log('送信するメッセージ:', JSON.stringify(replyMessage, null, 2));
-          
           try {
             await client.replyMessage(event.replyToken, replyMessage);
             console.log('メッセージ送信成功');
