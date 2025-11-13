@@ -115,7 +115,7 @@ function detectLanguage(text) {
 // Gemini APIを使用して言語判定と一括翻訳を同時に行う関数
 async function translateWithGeminiBatchAndDetect(text, groupId = null) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
     
     const languageNames = {
       'ja': '日本語',
@@ -152,6 +152,9 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
 7. 改行を含むテキストも正確に翻訳してください
 8. 原文にない句読点（？！。など）を勝手に追加しないでください
 9. 原文の句読点や記号を正確に保持してください
+10. 絵文字（😊🎉❤️など）はそのまま保持し、翻訳や変換をしないでください
+11. 絵文字を「(emoji)」「（絵文字）」「(이모지)」「(表情符號)」などのテキストに変換しないでください
+12. 翻訳結果に「(emoji)」「(絵文字)」「(이모지)」「(表情符號)」などのテキストを含めないでください
 
 正しいJSON形式（これ以外は受け付けません）：
 {
@@ -299,7 +302,7 @@ async function translateWithGeminiBatch(text, targetLanguages) {
   }
   
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
     
     const languageNames = {
       'ja': '日本語',
@@ -325,6 +328,9 @@ JSON形式で返してください（他の文字は含めないでください�
 1. 改行を含むテキストも正確に翻訳してください
 2. 原文にない句読点（？！。など）を勝手に追加しないでください
 3. 原文の句読点や記号を正確に保持してください
+4. 絵文字（😊🎉❤️など）はそのまま保持し、翻訳や変換をしないでください
+5. 絵文字を「(emoji)」「（絵文字）」「(이모지)」「(表情符號)」などのテキストに変換しないでください
+6. 翻訳結果に「(emoji)」「(絵文字)」「(이모지)」「(表情符號)」などのテキストを含めないでください
 
 翻訳対象テキスト（JSON形式）：
 ${escapedText}`;
@@ -372,7 +378,7 @@ ${escapedText}`;
 // 単一言語翻訳（フォールバック用）
 async function translateWithGemini(text, targetLang) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash-lite' });
+    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
     
     const languageNames = {
       'ja': '日本語',
@@ -390,6 +396,9 @@ async function translateWithGemini(text, targetLang) {
 - 改行がある場合は改行も保持してください
 - 原文にない句読点（？！。など）を勝手に追加しないでください
 - 原文の句読点や記号を正確に保持してください
+- 絵文字（😊🎉❤️など）はそのまま保持し、翻訳や変換をしないでください
+- 絵文字を「(emoji)」「（絵文字）」「(이모지)」「(表情符號)」などのテキストに変換しないでください
+- 翻訳結果に「(emoji)」「(絵文字)」「(이모지)」「(表情符號)」などのテキストを含めないでください
 
 翻訳対象テキスト：
 ${text}`;
