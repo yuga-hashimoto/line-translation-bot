@@ -150,6 +150,8 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
 5. 台湾語（繁体字中国語）は必ず "zh-TW" のみ使用
 6. 各言語につき1つの翻訳のみ提供する
 7. 改行を含むテキストも正確に翻訳してください
+8. 原文にない句読点（？！。など）を勝手に追加しないでください
+9. 原文の句読点や記号を正確に保持してください
 
 正しいJSON形式（これ以外は受け付けません）：
 {
@@ -319,7 +321,10 @@ JSON形式で返してください（他の文字は含めないでください�
 
 {${targetLanguages.map(lang => `"${lang}": "翻訳結果"`).join(', ')}}
 
-重要：改行を含むテキストも正確に翻訳してください。
+重要なルール：
+1. 改行を含むテキストも正確に翻訳してください
+2. 原文にない句読点（？！。など）を勝手に追加しないでください
+3. 原文の句読点や記号を正確に保持してください
 
 翻訳対象テキスト（JSON形式）：
 ${escapedText}`;
@@ -379,7 +384,15 @@ async function translateWithGemini(text, targetLang) {
     };
     
     // 改行を含むテキストも安全に処理
-    const prompt = `以下のテキストを${languageNames[targetLang]}に翻訳してください。翻訳結果のみを返してください。改行がある場合は改行も保持してください：\n\n${text}`;
+    const prompt = `以下のテキストを${languageNames[targetLang]}に翻訳してください。翻訳結果のみを返してください。
+    
+重要なルール：
+- 改行がある場合は改行も保持してください
+- 原文にない句読点（？！。など）を勝手に追加しないでください
+- 原文の句読点や記号を正確に保持してください
+
+翻訳対象テキスト：
+${text}`;
     
     const result = await model.generateContent(prompt);
     const response = await result.response;
