@@ -136,6 +136,9 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
         targetLanguageDescription = '日本語、韓国語、台湾語（繁体字中国語）、英語';
       }
     
+    // 改行を含むテキストをJSON文字列として安全にエスケープ
+    const escapedText = JSON.stringify(text);
+    
     const prompt = `以下のテキストの言語を判定し、適切な言語に翻訳してください。
 対象言語：${targetLanguageDescription}
 
@@ -146,6 +149,7 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
 4. 言語コードは厳密に以下のみ使用: ja, ko, en, fr, zh-TW
 5. 台湾語（繁体字中国語）は必ず "zh-TW" のみ使用
 6. 各言語につき1つの翻訳のみ提供する
+7. 改行を含むテキストも正確に翻訳してください
 
 正しいJSON形式（これ以外は受け付けません）：
 {
@@ -156,8 +160,8 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
   }
 }
 
-翻訳対象テキスト：
-${text}`;
+翻訳対象テキスト（JSON形式）：
+${escapedText}`;
     
     console.log('Gemini言語判定+一括翻訳を実行中...');
     
@@ -166,11 +170,13 @@ ${text}`;
     const responseText = response.text().trim();
     
     console.log('Gemini APIレスポンス:', responseText);
+    console.log('レスポンス長:', responseText.length);
     
     // JSONをパース
     try {
       let cleanedText = responseText.replace(/```json\s*/, '').replace(/```\s*$/, '');
       cleanedText = cleanedText.trim();
+      console.log('クリーンアップ後のテキスト:', cleanedText);
       
       const result = JSON.parse(cleanedText);
       
@@ -305,13 +311,18 @@ async function translateWithGeminiBatch(text, targetLanguages) {
     // 対象言語のリストを作成
     const targetLangList = targetLanguages.map(lang => languageNames[lang]).join('、');
     
+    // 改行を含むテキストをJSON文字列として安全にエスケープ
+    const escapedText = JSON.stringify(text);
+    
     const prompt = `以下のテキストを${targetLangList}に翻訳してください。
 JSON形式で返してください（他の文字は含めないでください）：
 
 {${targetLanguages.map(lang => `"${lang}": "翻訳結果"`).join(', ')}}
 
-翻訳対象テキスト：
-${text}`;
+重要：改行を含むテキストも正確に翻訳してください。
+
+翻訳対象テキスト（JSON形式）：
+${escapedText}`;
     
     console.log('Gemini一括翻訳プロンプト:', prompt);
     
@@ -367,7 +378,8 @@ async function translateWithGemini(text, targetLang) {
       'zh': '中文'
     };
     
-    const prompt = `以下のテキストを${languageNames[targetLang]}に翻訳してください。翻訳結果のみを返してください：\n\n${text}`;
+    // 改行を含むテキストも安全に処理
+    const prompt = `以下のテキストを${languageNames[targetLang]}に翻訳してください。翻訳結果のみを返してください。改行がある場合は改行も保持してください：\n\n${text}`;
     
     const result = await model.generateContent(prompt);
     const response = await result.response;
@@ -463,6 +475,7 @@ async function translateText(text, targetLang) {
 async function translateWithAIDetection(text, groupId = null) {
   // まずAI言語判定+一括翻訳を試行
   console.log('AI言語判定+一括翻訳を試行中...');
+  console.log(`入力テキスト（デバッグ用）: ${JSON.stringify(text)}`);
   const aiResult = await translateWithGeminiBatchAndDetect(text, groupId);
   
   console.log('aiResult:', aiResult);
@@ -749,6 +762,12 @@ async function handleWebhook(req, res) {
           }
           
           console.log(`翻訳対象テキスト: "${text}"`);
+          console.log(`テキスト長: ${text.length}文字`);
+          console.log(`改行を含む: ${text.includes('\n') ? 'はい' : 'いいえ'}`);
+          if (text.includes('\n')) {
+            console.log(`改行数: ${(text.match(/\n/g) || []).length}`);
+            console.log(`行に分割: ${JSON.stringify(text.split('\n'))}`);
+          }
           
           // AI言語判定+翻訳実行
           const result = await translateWithAIDetection(text, groupId);
