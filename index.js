@@ -26,6 +26,28 @@ let geminiQuotaExceeded = false;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
+// Gemini System Instruction（共通の人格・ルール設定）
+const TRANSLATION_SYSTEM_INSTRUCTION = `あなたは高精度な多言語翻訳AIです。
+
+【翻訳の基本ルール】
+1. 原文の意味を正確に翻訳する
+2. 改行を含むテキストも正確に翻訳し、改行を保持する
+3. 原文にない句読点（？！。など）を勝手に追加しない
+4. 原文の句読点や記号を正確に保持する
+5. LINEレンジャーのグループLINEで翻訳機能を使います
+
+【絵文字の扱い】
+1. Unicode絵文字（😊🎉❤️など）はそのまま保持し、翻訳や変換をしない
+2. 絵文字を「(emoji)」「（絵文字）」「(이모지)」「(表情符號)」などのテキストに変換しない
+3. 翻訳結果に「(emoji)」「(絵文字)」「(이모지)」「(表情符號)」などのテキストを含めない
+4. LINE絵文字のテキスト表現（例：(moon smirk)、(brown)、(sally)など）は翻訳結果に含めない
+5. 括弧で囲まれたテキスト (xxx) の形式はLINE絵文字なので、翻訳結果から除外する
+
+【出力形式】
+1. JSON形式で結果を返す場合、厳密にJSON構造を守る
+2. マークダウンのコードブロック記号（\`\`\`）は使用しない
+3. JSON以外の余計な文字を含めない`;
+
 // DeepL APIの設定（フォールバック用）
 const DEEPL_API_KEY = process.env.DEEPL_API_KEY;
 const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
@@ -115,7 +137,10 @@ function detectLanguage(text) {
 // Gemini APIを使用して言語判定と一括翻訳を同時に行う関数
 async function translateWithGeminiBatchAndDetect(text, groupId = null) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-2.5-flash-lite',
+      systemInstruction: TRANSLATION_SYSTEM_INSTRUCTION
+    });
     
     const languageNames = {
       'ja': '日本語',
@@ -140,25 +165,17 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
     const escapedText = JSON.stringify(text);
     
     const prompt = `以下のテキストの言語を判定し、適切な言語に翻訳してください。
+
 対象言語：${targetLanguageDescription}
 
-重要なルール：
+タスク：
 1. 入力テキストの言語を判定
 2. その言語以外の対象言語すべてに翻訳
-3. JSON形式で結果を返す（他の文字は含めない）
-4. 言語コードは厳密に以下のみ使用: ja, ko, en, fr, zh-TW
-5. 台湾語（繁体字中国語）は必ず "zh-TW" のみ使用
-6. 各言語につき1つの翻訳のみ提供する
-7. 改行を含むテキストも正確に翻訳してください
-8. 原文にない句読点（？！。など）を勝手に追加しないでください
-9. 原文の句読点や記号を正確に保持してください
-10. 絵文字（😊🎉❤️など）はそのまま保持し、翻訳や変換をしないでください
-11. 絵文字を「(emoji)」「（絵文字）」「(이모지)」「(表情符號)」などのテキストに変換しないでください
-12. 翻訳結果に「(emoji)」「(絵文字)」「(이모지)」「(表情符號)」などのテキストを含めないでください
-13. LINE絵文字のテキスト表現（例：(moon smirk)、(brown)、(sally)など）は翻訳結果に含めないでください
-14. 括弧で囲まれたテキスト (xxx) の形式はLINE絵文字なので、翻訳結果から除外してください
+3. 言語コードは厳密に以下のみ使用: ja, ko, en, fr, zh-TW
+4. 台湾語（繁体字中国語）は必ず "zh-TW" のみ使用
+5. 各言語につき1つの翻訳のみ提供
 
-正しいJSON形式（これ以外は受け付けません）：
+出力形式（JSON）：
 {
   "detected_language": "ja",
   "translations": {
@@ -167,7 +184,7 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
   }
 }
 
-翻訳対象テキスト（JSON形式）：
+翻訳対象テキスト：
 ${escapedText}`;
     
     console.log('Gemini言語判定+一括翻訳を実行中...');
@@ -304,7 +321,10 @@ async function translateWithGeminiBatch(text, targetLanguages) {
   }
   
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-2.5-flash-lite',
+      systemInstruction: TRANSLATION_SYSTEM_INSTRUCTION
+    });
     
     const languageNames = {
       'ja': '日本語',
@@ -322,21 +342,11 @@ async function translateWithGeminiBatch(text, targetLanguages) {
     const escapedText = JSON.stringify(text);
     
     const prompt = `以下のテキストを${targetLangList}に翻訳してください。
-JSON形式で返してください（他の文字は含めないでください）：
 
+出力形式（JSON）：
 {${targetLanguages.map(lang => `"${lang}": "翻訳結果"`).join(', ')}}
 
-重要なルール：
-1. 改行を含むテキストも正確に翻訳してください
-2. 原文にない句読点（？！。など）を勝手に追加しないでください
-3. 原文の句読点や記号を正確に保持してください
-4. 絵文字（😊🎉❤️など）はそのまま保持し、翻訳や変換をしないでください
-5. 絵文字を「(emoji)」「（絵文字）」「(이모지)」「(表情符號)」などのテキストに変換しないでください
-6. 翻訳結果に「(emoji)」「(絵文字)」「(이모지)」「(表情符號)」などのテキストを含めないでください
-7. LINE絵文字のテキスト表現（例：(moon smirk)、(brown)、(sally)など）は翻訳結果に含めないでください
-8. 括弧で囲まれたテキスト (xxx) の形式はLINE絵文字なので、翻訳結果から除外してください
-
-翻訳対象テキスト（JSON形式）：
+翻訳対象テキスト：
 ${escapedText}`;
     
     console.log('Gemini一括翻訳プロンプト:', prompt);
@@ -382,7 +392,10 @@ ${escapedText}`;
 // 単一言語翻訳（フォールバック用）
 async function translateWithGemini(text, targetLang) {
   try {
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash-lite' });
+    const model = genAI.getGenerativeModel({ 
+      model: 'gemini-2.5-flash-lite',
+      systemInstruction: TRANSLATION_SYSTEM_INSTRUCTION
+    });
     
     const languageNames = {
       'ja': '日本語',
@@ -393,18 +406,7 @@ async function translateWithGemini(text, targetLang) {
       'zh': '中文'
     };
     
-    // 改行を含むテキストも安全に処理
     const prompt = `以下のテキストを${languageNames[targetLang]}に翻訳してください。翻訳結果のみを返してください。
-    
-重要なルール：
-- 改行がある場合は改行も保持してください
-- 原文にない句読点（？！。など）を勝手に追加しないでください
-- 原文の句読点や記号を正確に保持してください
-- 絵文字（😊🎉❤️など）はそのまま保持し、翻訳や変換をしないでください
-- 絵文字を「(emoji)」「（絵文字）」「(이모지)」「(表情符號)」などのテキストに変換しないでください
-- 翻訳結果に「(emoji)」「(絵文字)」「(이모지)」「(表情符號)」などのテキストを含めないでください
-- LINE絵文字のテキスト表現（例：(moon smirk)、(brown)、(sally)など）は翻訳結果に含めないでください
-- 括弧で囲まれたテキスト (xxx) の形式はLINE絵文字なので、翻訳結果から除外してください
 
 翻訳対象テキスト：
 ${text}`;
