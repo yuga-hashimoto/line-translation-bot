@@ -10,6 +10,7 @@
   "dependencies": {
     "@google/generative-ai": "^0.21.0",
     "@line/bot-sdk": "^9.9.0",
+    "@upstash/redis": "^1.34.3",
     "axios": "^1.7.0",
     "express": "^4.18.0",
     "franc": "^6.2.0",
