@@ -10,6 +10,26 @@ let franc;
   franc = francModule.franc;
 })();
 
+// Redis設定（Upstash Redis REST API）
+const { Redis } = require('@upstash/redis');
+let redisClient;
+
+// sana-chanと共有しているUpstash Redis
+const UPSTASH_REDIS_REST_URL = 'https://endless-parrot-7954.upstash.io';
+const UPSTASH_REDIS_REST_TOKEN = 'AR8SAAImcDI5NTlmODJjZjY5MGE0ZmVmYTc4M2NhZmI4MDEyNWU5ZXAyNzk1NA';
+
+if (UPSTASH_REDIS_REST_URL && UPSTASH_REDIS_REST_TOKEN) {
+  console.log('🌐 Upstash Redis (REST API) に接続します');
+  redisClient = new Redis({
+    url: UPSTASH_REDIS_REST_URL,
+    token: UPSTASH_REDIS_REST_TOKEN,
+  });
+  console.log('✅ Upstash Redis接続設定完了');
+} else {
+  console.log('⚠️ Redis設定が見つかりません。メッセージ削除機能は無効です。');
+  redisClient = null;
+}
+
 // LINE Messaging APIの設定
 const config = {
   channelAccessToken: process.env.LINE_CHANNEL_ACCESS_TOKEN,
@@ -53,6 +73,68 @@ const DEEPL_API_KEY = process.env.DEEPL_API_KEY;
 const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
 
 const client = new line.Client(config);
+
+// Redisキーの生成
+function getMessageMappingKey(originalMessageId) {
+  return `translation:msg:${originalMessageId}`;
+}
+
+// 元メッセージIDと翻訳メッセージIDをRedisに保存（TTL: 7日）
+async function saveMessageMapping(originalMessageId, translatedMessageId) {
+  if (!redisClient) {
+    console.log('Redis未設定のためマッピング保存をスキップ');
+    return false;
+  }
+  
+  try {
+    const key = getMessageMappingKey(originalMessageId);
+    await redisClient.set(key, translatedMessageId);
+    // TTL: 7日（LINEのメッセージ送信取り消しは7日以内のメッセージのみ可能）
+    await redisClient.expire(key, 7 * 24 * 60 * 60);
+    console.log(`✅ メッセージマッピング保存: ${originalMessageId} -> ${translatedMessageId}`);
+    return true;
+  } catch (error) {
+    console.error('❌ メッセージマッピング保存エラー:', error);
+    return false;
+  }
+}
+
+// 元メッセージIDから翻訳メッセージIDを取得
+async function getTranslatedMessageId(originalMessageId) {
+  if (!redisClient) {
+    console.log('Redis未設定のためマッピング取得をスキップ');
+    return null;
+  }
+  
+  try {
+    const key = getMessageMappingKey(originalMessageId);
+    const translatedMessageId = await redisClient.get(key);
+    console.log(`🔍 メッセージマッピング取得: ${originalMessageId} -> ${translatedMessageId || 'なし'}`);
+    return translatedMessageId;
+  } catch (error) {
+    console.error('❌ メッセージマッピング取得エラー:', error);
+    return null;
+  }
+}
+
+// 翻訳メッセージを削除（送信取り消し）
+async function unsendTranslatedMessage(translatedMessageId) {
+  try {
+    // LINE Messaging APIでメッセージを送信取り消し
+    // 注意: BOTが送信したメッセージのみ削除可能
+    await client.deleteMessage(translatedMessageId);
+    console.log(`🗑️ 翻訳メッセージを削除: ${translatedMessageId}`);
+    return true;
+  } catch (error) {
+    console.error('❌ 翻訳メッセージ削除エラー:', error);
+    console.error('エラー詳細:', {
+      status: error.response?.status,
+      statusText: error.response?.statusText,
+      data: error.response?.data
+    });
+    return false;
+  }
+}
 
 // クォータエラーかどうかを判定する関数
 function isQuotaError(error) {
@@ -736,6 +818,43 @@ async function handleWebhook(req, res) {
           console.log(`=== イベント ${index + 1} 処理開始 ===`);
           console.log('イベント詳細:', JSON.stringify(event, null, 2));
           
+          // メッセージ送信取り消しイベントの処理
+          if (event.type === 'unsend') {
+            console.log(`イベント ${index + 1}: メッセージ送信取り消しイベント`);
+            
+            // グループチャットのみに制限
+            if (event.source.type !== 'group') {
+              console.log(`イベント ${index + 1}: グループチャット以外のため処理をスキップ`);
+              return;
+            }
+            
+            const unsendMessageId = event.unsend.messageId;
+            console.log(`送信取り消しされたメッセージID: ${unsendMessageId}`);
+            
+            // Redisから対応する翻訳メッセージIDを取得
+            const translatedMessageId = await getTranslatedMessageId(unsendMessageId);
+            
+            if (translatedMessageId) {
+              console.log(`対応する翻訳メッセージを削除します: ${translatedMessageId}`);
+              await unsendTranslatedMessage(translatedMessageId);
+              
+              // Redisからマッピングを削除
+              if (redisClient) {
+                try {
+                  const key = getMessageMappingKey(unsendMessageId);
+                  await redisClient.del(key);
+                  console.log(`✅ メッセージマッピング削除: ${unsendMessageId}`);
+                } catch (error) {
+                  console.error('❌ メッセージマッピング削除エラー:', error);
+                }
+              }
+            } else {
+              console.log('対応する翻訳メッセージが見つかりませんでした');
+            }
+            
+            return;
+          }
+          
           if (event.type !== 'message') {
             console.log(`イベント ${index + 1}: メッセージイベントではありません (${event.type})`);
             return;
@@ -819,8 +938,16 @@ async function handleWebhook(req, res) {
           const replyMessage = generateTranslationMessage(text, sourceLang, translations);
           
           try {
-            await client.replyMessage(event.replyToken, replyMessage);
+            const response = await client.replyMessage(event.replyToken, replyMessage);
             console.log('メッセージ送信成功');
+            
+            // 送信成功後、元メッセージIDと翻訳メッセージIDのマッピングを保存
+            // LINE APIのレスポンスにはsentMessagesが含まれる
+            if (response && response.sentMessages && response.sentMessages.length > 0) {
+              const translatedMessageId = response.sentMessages[0].id;
+              const originalMessageId = event.message.id;
+              await saveMessageMapping(originalMessageId, translatedMessageId);
+            }
           } catch (replyError) {
             console.error('メッセージ送信エラー:', replyError);
             console.error('エラー詳細:', {
