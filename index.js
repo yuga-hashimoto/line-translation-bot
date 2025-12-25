@@ -661,8 +661,8 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
     }
   ];
   
-  // 翻訳結果を追加（最大3つまでに制限してメッセージサイズを抑制）
-  const translationEntries = Object.entries(translations).slice(0, 3);
+  // 翻訳結果を追加（すべての翻訳を表示）
+  const translationEntries = Object.entries(translations);
   
   translationEntries.forEach(([lang, text]) => {
     const truncatedText = truncateText(text, 300); // 各翻訳を300文字以内に制限
