@@ -194,10 +194,33 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
     
     // 改行を含むテキストをJSON文字列として安全にエスケープ
     const escapedText = JSON.stringify(text);
-    
+
+    // グループに応じた翻訳例を作成
+    const exampleTranslations = groupId === FRENCH_ONLY_GROUP_ID
+      ? `{
+  "detected_language": "ja",
+  "translations": {
+    "fr": "Traduction française",
+    "en": "English translation",
+    "zh-TW": "中文翻譯"
+  }
+}`
+      : `{
+  "detected_language": "ja",
+  "translations": {
+    "ko": "한국어 번역",
+    "zh-TW": "中文翻譯",
+    "en": "English translation"
+  }
+}`;
+
+    // 翻訳すべき言語リストを作成（元の言語を除く）
+    const targetLanguagesList = availableLanguages.filter(lang => lang !== 'ja').join(', ');
+
     const prompt = `以下のテキストの言語を判定し、適切な言語に翻訳してください。
 
 対象言語：${targetLanguageDescription}
+利用可能な言語コード：${availableLanguages.join(', ')}
 
 タスク：
 1. 入力テキストの言語を判定
@@ -205,24 +228,25 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
    - ひらがな・カタカナが含まれている場合は日本語と判定してください
    - ハングルが含まれている場合は韓国語と判定してください
    - メッセージ全体の文脈を考慮して判定してください
-2. その言語以外の対象言語すべてに翻訳
-3. 言語コードは厳密に以下のみ使用: ja, ko, en, fr, zh-TW
+
+2. 判定した言語以外の**すべての対象言語**に翻訳してください
+   - 絶対に言語を省略しないでください
+   - 必ず対象言語全てに翻訳を提供してください
+
+3. 言語コードは厳密に以下のみ使用: ${availableLanguages.join(', ')}
+
 4. 台湾語（繁体字中国語）は必ず "zh-TW" のみ使用
+
 5. 各言語につき1つの翻訳のみ提供
 
 重要な注意事項：
 - 「@毛沢東 こんにちは」のような場合、@毛沢東は無視し、「こんにちは」の部分で言語判定すること
 - ひらがなが含まれていれば日本語と判定すること
 - メンションや人名に含まれる漢字に惑わされないこと
+- 判定した言語以外の全ての言語に必ず翻訳すること（例：日本語と判定した場合、${targetLanguagesList}の全てに翻訳）
 
 出力形式（JSON）：
-{
-  "detected_language": "ja",
-  "translations": {
-    "en": "English translation",
-    "zh-TW": "中文翻譯"
-  }
-}
+${exampleTranslations}
 
 翻訳対象テキスト：
 ${escapedText}`;
