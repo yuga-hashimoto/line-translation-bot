@@ -830,7 +830,15 @@ async function handleWebhook(req, res) {
             console.log('LINE絵文字のみのため翻訳をスキップします:', text);
             return;
           }
-          
+
+          // URLのみの場合は翻訳をスキップ
+          // URLと空白・改行のみで構成されているメッセージを検出
+          const urlOnlyPattern = /^(https?:\/\/[^\s]+\s*)+$/;
+          if (urlOnlyPattern.test(text)) {
+            console.log('URLのみのため翻訳をスキップします:', text);
+            return;
+          }
+
           console.log(`翻訳対象テキスト: "${text}"`);
           console.log(`テキスト長: ${text.length}文字`);
           console.log(`改行を含む: ${text.includes('\n') ? 'はい' : 'いいえ'}`);
