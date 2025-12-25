@@ -60,6 +60,21 @@ function isQuotaError(error) {
          error.message.includes('quota');
 }
 
+// テキストから言語判定の邪魔になる要素を除去する関数
+function cleanTextForLanguageDetection(text) {
+  // メンション（@ユーザー名）を削除
+  // LINEのメンションは @displayName の形式
+  let cleaned = text.replace(/@[^\s]+/g, '');
+
+  // URLを削除
+  cleaned = cleaned.replace(/https?:\/\/[^\s]+/g, '');
+
+  // 連続する空白を1つにまとめる
+  cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+  return cleaned;
+}
+
 // 改良版テキストから言語を検出する関数（短文・フォールバック用）
 function detectLanguageFromText(text) {
   const hiraganaPattern = /[\u3040-\u309F]/g;
@@ -85,26 +100,42 @@ function detectLanguageFromText(text) {
   
   // 優先順位での判定（最も特徴的な文字から）
   if (koreanRatio >= 0.2) return 'ko';
-  if (hiraganaRatio >= 0.05) return 'ja'; // ひらがなは日本語の確実な指標
-  if (japaneseRatio >= 0.2) return 'ja'; // カタカナメイン
-  if (chineseRatio >= 0.2 && hiraganaRatio === 0) return 'zh'; // 中国語の閾値を下げる
+
+  // ひらがなは日本語の確実な指標（1文字でもあれば日本語）
+  if (hiraganaRatio > 0) return 'ja';
+
+  // カタカナメイン（日本語）
+  if (japaneseRatio >= 0.2) return 'ja';
+
+  // 中国語判定を厳格化：ひらがな・カタカナが一切ない、かつ漢字が50%以上
+  if (chineseRatio >= 0.5 && hiraganaRatio === 0 && katakanaRatio === 0) return 'zh-TW';
+
+  // ラテン文字が多い場合は英語
   if (latinRatio >= 0.6) return 'en';
-  
-  return 'en'; // デフォルト
+
+  // デフォルトは英語
+  return 'en';
 }
 
 // ハイブリッド言語検出（高精度）
 function detectLanguage(text) {
+  // メンションやURLを除去してクリーンなテキストで判定
+  const cleanedText = cleanTextForLanguageDetection(text);
+  console.log(`言語判定用にテキストをクリーニング: "${text}" -> "${cleanedText}"`);
+
+  // クリーニング後のテキストが空になった場合は元のテキストを使用
+  const textForDetection = cleanedText.length > 0 ? cleanedText : text;
+
   // 1. 短文や特殊ケースは自前ロジック
-  if (text.length < 10) {
+  if (textForDetection.length < 10) {
     console.log('短文のため自前ロジックを使用');
-    return detectLanguageFromText(text);
+    return detectLanguageFromText(textForDetection);
   }
-  
+
   // 2. 長文はfrancで高精度検出（francが読み込まれている場合のみ）
   if (franc) {
     try {
-      const detected = franc(text, { minLength: 3 });
+      const detected = franc(textForDetection, { minLength: 3 });
       console.log(`Francによる検出結果: ${detected}`);
       
       const languageMap = {
@@ -128,10 +159,10 @@ function detectLanguage(text) {
   } else {
     console.log('Francがまだ読み込まれていないため、フォールバックを使用');
   }
-  
+
   // 3. フォールバック
   console.log('フォールバックロジックを使用');
-  return detectLanguageFromText(text);
+  return detectLanguageFromText(textForDetection);
 }
 
 // Gemini APIを使用して言語判定と一括翻訳を同時に行う関数
@@ -170,10 +201,19 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
 
 タスク：
 1. 入力テキストの言語を判定
+   - @メンション（例: @ユーザー名）や中国語の人名は無視し、実際のメッセージ内容のみで判定してください
+   - ひらがな・カタカナが含まれている場合は日本語と判定してください
+   - ハングルが含まれている場合は韓国語と判定してください
+   - メッセージ全体の文脈を考慮して判定してください
 2. その言語以外の対象言語すべてに翻訳
 3. 言語コードは厳密に以下のみ使用: ja, ko, en, fr, zh-TW
 4. 台湾語（繁体字中国語）は必ず "zh-TW" のみ使用
 5. 各言語につき1つの翻訳のみ提供
+
+重要な注意事項：
+- 「@毛沢東 こんにちは」のような場合、@毛沢東は無視し、「こんにちは」の部分で言語判定すること
+- ひらがなが含まれていれば日本語と判定すること
+- メンションや人名に含まれる漢字に惑わされないこと
 
 出力形式（JSON）：
 {
@@ -790,7 +830,15 @@ async function handleWebhook(req, res) {
             console.log('LINE絵文字のみのため翻訳をスキップします:', text);
             return;
           }
-          
+
+          // URLのみの場合は翻訳をスキップ
+          // URLと空白・改行のみで構成されているメッセージを検出
+          const urlOnlyPattern = /^(https?:\/\/[^\s]+\s*)+$/;
+          if (urlOnlyPattern.test(text)) {
+            console.log('URLのみのため翻訳をスキップします:', text);
+            return;
+          }
+
           console.log(`翻訳対象テキスト: "${text}"`);
           console.log(`テキスト長: ${text.length}文字`);
           console.log(`改行を含む: ${text.includes('\n') ? 'はい' : 'いいえ'}`);
