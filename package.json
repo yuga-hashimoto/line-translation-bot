@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "deploy": "gcloud functions deploy lineTranslationBot --runtime nodejs20 --trigger-http --allow-unauthenticated --set-env-vars LINE_CHANNEL_ACCESS_TOKEN=$LINE_CHANNEL_ACCESS_TOKEN,LINE_CHANNEL_SECRET=$LINE_CHANNEL_SECRET,DEEPL_API_KEY=$DEEPL_API_KEY,OPENROUTER_API_KEY=$OPENROUTER_API_KEY,OPENROUTER_MODEL=${OPENROUTER_MODEL:-google/gemini-2.5-flash-lite}"
+    "deploy": "gcloud functions deploy lineTranslationBot --runtime nodejs20 --trigger-http --allow-unauthenticated --set-env-vars LINE_CHANNEL_ACCESS_TOKEN=$LINE_CHANNEL_ACCESS_TOKEN,LINE_CHANNEL_SECRET=$LINE_CHANNEL_SECRET,DEEPL_API_KEY=$DEEPL_API_KEY,OPENROUTER_API_KEY=$OPENROUTER_API_KEY,OPENROUTER_MODEL=${OPENROUTER_MODEL:-google/gemini-2.5-flash-lite},OPENROUTER_MODEL2=$OPENROUTER_MODEL2,OPENROUTER_MODEL3=$OPENROUTER_MODEL3"
   },
   "dependencies": {
     "@line/bot-sdk": "^9.9.0",
