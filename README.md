@@ -1,6 +1,6 @@
 # LINE Translation Bot
 
-LINE グループチャット専用の多言語翻訳BOTです。DeepL APIを使用して日本語、韓国語、台湾語、英語間の翻訳を行います。
+LINE グループチャット専用の多言語翻訳BOTです。OpenRouter経由でGemini APIを使用し、フォールバックとしてDeepL APIを使用して日本語、韓国語、台湾語、英語間の翻訳を行います。
 
 ## 機能
 
@@ -17,10 +17,18 @@ npm install
 ```
 
 ### 2. 環境変数の設定
+
+必要な環境変数:
+- `LINE_CHANNEL_ACCESS_TOKEN`: LINE Messaging APIのアクセストークン
+- `LINE_CHANNEL_SECRET`: LINE Messaging APIのチャネルシークレット
+- `OPENROUTER_API_KEY`: OpenRouter APIキー（必須）
+- `OPENROUTER_MODEL`: 使用するモデル名（省略可、デフォルト: `google/gemini-2.5-flash-lite`）
+- `DEEPL_API_KEY`: DeepL APIキー（フォールバック用、省略可）
+
 ```bash
-# Google Cloud Functions の環境変数として設定
-gcloud functions deploy lineTranslationBot \
-  --set-env-vars LINE_CHANNEL_ACCESS_TOKEN=your_token,LINE_CHANNEL_SECRET=your_secret,DEEPL_API_KEY=your_deepl_key
+# ローカル開発時は .env ファイルに設定
+cp .env.example .env
+# .env ファイルを編集して API キーを設定
 ```
 
 ### 3. Google Cloud Functions へのデプロイ
@@ -34,8 +42,31 @@ gcloud functions deploy lineTranslationBot \
   --runtime nodejs20 \
   --trigger-http \
   --allow-unauthenticated \
-  --set-env-vars LINE_CHANNEL_ACCESS_TOKEN=your_token,LINE_CHANNEL_SECRET=your_secret,DEEPL_API_KEY=your_deepl_key
+  --set-env-vars LINE_CHANNEL_ACCESS_TOKEN=your_token,LINE_CHANNEL_SECRET=your_secret,OPENROUTER_API_KEY=your_key,DEEPL_API_KEY=your_deepl_key
 ```
+
+### モデルの変更方法
+
+使用するAIモデルを変更するには、`OPENROUTER_MODEL` 環境変数を設定します。
+
+**ローカル環境:**
+```bash
+# .env ファイルで設定
+OPENROUTER_MODEL=google/gemini-2.0-flash-exp:free
+```
+
+**本番環境（Cloud Functions/Cloud Run）:**
+```bash
+# デプロイ時に環境変数を指定
+export OPENROUTER_MODEL=google/gemini-2.0-flash-exp:free
+npm run deploy
+```
+
+**利用可能なモデル例:**
+- `google/gemini-2.5-flash-lite` - デフォルト、高速・低コスト
+- `google/gemini-2.0-flash-exp:free` - 実験版、無料
+- `google/gemini-pro-1.5` - より高性能
+- その他のモデルは [OpenRouter Models](https://openrouter.ai/docs#models) を参照
 
 ### 4. LINE Developer Console の設定
 1. Webhook URLを設定: `https://[region]-[project-id].cloudfunctions.net/lineTranslationBot`
