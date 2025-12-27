@@ -1,7 +1,6 @@
 const line = require('@line/bot-sdk');
 const axios = require('axios');
 const express = require('express');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
 const OpenAI = require('openai');
 
 // Dynamic import for franc (ES module)
@@ -22,10 +21,6 @@ const FRENCH_ONLY_GROUP_ID = 'C40b7245622ac6e6ec1e6c1def21881e2'; // ハード�
 
 // Geminiクォータエラーフラグ
 let geminiQuotaExceeded = false;
-
-// Gemini APIの設定
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 
 // OpenRouter APIの設定（Gemini経由で使用）
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
