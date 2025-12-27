@@ -24,10 +24,18 @@ let geminiQuotaExceeded = false;
 
 // OpenRouter APIの設定（Gemini経由で使用）
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const openrouter = new OpenAI({
-  baseURL: "https://openrouter.ai/api/v1",
-  apiKey: OPENROUTER_API_KEY
-});
+
+// OpenRouterクライアントの初期化（APIキーが設定されている場合のみ）
+let openrouter = null;
+if (OPENROUTER_API_KEY) {
+  openrouter = new OpenAI({
+    baseURL: "https://openrouter.ai/api/v1",
+    apiKey: OPENROUTER_API_KEY
+  });
+  console.log('OpenRouter API initialized');
+} else {
+  console.warn('WARNING: OPENROUTER_API_KEY is not set. Translation features will not work.');
+}
 
 // Gemini System Instruction（共通の人格・ルール設定）
 const TRANSLATION_SYSTEM_INSTRUCTION = `あなたは高精度な多言語翻訳AIです。
@@ -171,6 +179,12 @@ function detectLanguage(text) {
 // Gemini APIを使用して言語判定と一括翻訳を同時に行う関数
 // OpenRouter経由でGemini 2.5 Flash Liteを使用
 async function translateWithGeminiBatchAndDetect(text, groupId = null) {
+  // OpenRouter APIが初期化されていない場合はnullを返す
+  if (!openrouter) {
+    console.error('OpenRouter API is not initialized. Please set OPENROUTER_API_KEY.');
+    return null;
+  }
+
   try {
     // OpenRouter経由でGemini 2.5 Flash Liteを使用
     
@@ -393,6 +407,12 @@ ${escapedText}`;
 // Gemini APIを使用して一括翻訳する関数（フォールバック用）
 // OpenRouter経由でGemini 2.5 Flash Liteを使用
 async function translateWithGeminiBatch(text, targetLanguages) {
+  // OpenRouter APIが初期化されていない場合はnullを返す
+  if (!openrouter) {
+    console.error('OpenRouter API is not initialized. Please set OPENROUTER_API_KEY.');
+    return null;
+  }
+
   // クォータエラーが発生している場合はスキップ
   if (geminiQuotaExceeded) {
     console.log('Geminiクォータエラーのため一括翻訳をスキップ');
@@ -481,6 +501,12 @@ ${escapedText}`;
 // 単一言語翻訳（フォールバック用）
 // OpenRouter経由でGemini 2.5 Flash Liteを使用
 async function translateWithGemini(text, targetLang) {
+  // OpenRouter APIが初期化されていない場合はnullを返す
+  if (!openrouter) {
+    console.error('OpenRouter API is not initialized. Please set OPENROUTER_API_KEY.');
+    return null;
+  }
+
   try {
     // OpenRouter経由でGemini 2.5 Flash Liteを使用
     const languageNames = {
