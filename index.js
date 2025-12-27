@@ -31,11 +31,7 @@ const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const openrouter = new OpenAI({
   baseURL: "https://openrouter.ai/api/v1",
-  apiKey: OPENROUTER_API_KEY,
-  defaultHeaders: {
-    "HTTP-Referer": "https://github.com/yuga-hashimoto/line-translation-bot",
-    "X-Title": "LINE Translation Bot"
-  }
+  apiKey: OPENROUTER_API_KEY
 });
 
 // Gemini System Instruction（共通の人格・ルール設定）
@@ -265,7 +261,7 @@ ${escapedText}`;
 
     // OpenRouter経由でGemini 2.5 Flash Liteを呼び出し
     const completion = await openrouter.chat.completions.create({
-      model: "google/gemini-2.0-flash-exp:free",
+      model: "google/gemini-2.5-flash-lite",
       messages: [
         {
           role: "system",
@@ -438,7 +434,7 @@ ${escapedText}`;
 
     // OpenRouter経由でGemini 2.5 Flash Liteを呼び出し
     const completion = await openrouter.chat.completions.create({
-      model: "google/gemini-2.0-flash-exp:free",
+      model: "google/gemini-2.5-flash-lite",
       messages: [
         {
           role: "system",
@@ -508,7 +504,7 @@ ${text}`;
 
     // OpenRouter経由でGemini 2.5 Flash Liteを呼び出し
     const completion = await openrouter.chat.completions.create({
-      model: "google/gemini-2.0-flash-exp:free",
+      model: "google/gemini-2.5-flash-lite",
       messages: [
         {
           role: "system",
