@@ -895,45 +895,46 @@ async function sendTranslationMessages(client, replyToken, groupId, text, source
   // 長文の場合：各言語を個別のメッセージとして送信
   const messages = [];
 
-  // 最初のメッセージ：ヘッダー
-  messages.push({
-    type: 'text',
-    text: '🌍 翻訳結果 (Translation Results)'
-  });
-
   // 各言語の翻訳をメッセージとして追加
   for (const [lang, translatedText] of Object.entries(translations)) {
     const langName = languageNames[lang] || lang;
+    const prefix = `${langName}:\n`;
 
-    // テキストを分割（LINEの文字数制限対応）
-    const chunks = splitTextIntoChunks(translatedText, MAX_LINE_MESSAGE - langName.length - 10);
+    // LINEの文字数制限（5000文字）を考慮してテキストを分割
+    const maxTextLength = MAX_LINE_MESSAGE - prefix.length;
 
-    chunks.forEach((chunk, index) => {
-      const prefix = chunks.length > 1 ? `${langName} (${index + 1}/${chunks.length}):\n` : `${langName}:\n`;
+    if (translatedText.length <= maxTextLength) {
+      // 1メッセージで収まる場合
       messages.push({
         type: 'text',
-        text: prefix + chunk
+        text: prefix + translatedText
       });
-    });
+    } else {
+      // 分割が必要な場合
+      const chunks = splitTextIntoChunks(translatedText, maxTextLength);
+      chunks.forEach((chunk, index) => {
+        const chunkPrefix = chunks.length > 1
+          ? `${langName} (${index + 1}/${chunks.length}):\n`
+          : prefix;
+        messages.push({
+          type: 'text',
+          text: chunkPrefix + chunk
+        });
+      });
+    }
   }
 
-  // 最初のメッセージはreplyMessage、残りはpushMessage
+  // replyMessageで一度に送信（LINEは最大5件まで）
   if (messages.length > 0) {
-    await client.replyMessage(replyToken, messages[0]);
+    // 最大5件に制限
+    const messagesToSend = messages.slice(0, 5);
 
-    // 残りのメッセージをpushMessageで送信
-    if (messages.length > 1) {
-      // LINEは一度に最大5件のメッセージを送信可能
-      for (let i = 1; i < messages.length; i += 5) {
-        const batch = messages.slice(i, i + 5);
-        await client.pushMessage(groupId, batch);
-
-        // レート制限対策として少し待つ
-        if (i + 5 < messages.length) {
-          await new Promise(resolve => setTimeout(resolve, 100));
-        }
-      }
+    // 5件を超える場合は警告をログ出力
+    if (messages.length > 5) {
+      console.warn(`[Warning] Total messages: ${messages.length}, sending first 5 only`);
     }
+
+    await client.replyMessage(replyToken, messagesToSend);
   }
 }
 
