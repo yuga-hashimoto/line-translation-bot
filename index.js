@@ -25,6 +25,11 @@ let apiQuotaExceeded = false;
 // OpenRouter APIの設定
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash-lite";
+const OPENROUTER_MODEL2 = process.env.OPENROUTER_MODEL2;  // フォールバック1
+const OPENROUTER_MODEL3 = process.env.OPENROUTER_MODEL3;  // フォールバック2
+
+// フォールバックモデルの配列を作成（設定されているもののみ）
+const fallbackModels = [OPENROUTER_MODEL2, OPENROUTER_MODEL3].filter(Boolean);
 
 // OpenRouterクライアントの初期化（APIキーが設定されている場合のみ）
 let openrouter = null;
@@ -35,6 +40,9 @@ if (OPENROUTER_API_KEY) {
   });
   console.log('OpenRouter API initialized');
   console.log(`Using model: ${OPENROUTER_MODEL}`);
+  if (fallbackModels.length > 0) {
+    console.log(`Fallback models: ${fallbackModels.join(', ')}`);
+  }
 } else {
   console.warn('WARNING: OPENROUTER_API_KEY is not set. Translation features will not work.');
 }
@@ -257,9 +265,9 @@ ${exampleTranslations}
 
 翻訳対象テキスト：
 ${escapedText}`;
-    
+
     // OpenRouter APIを呼び出し
-    const completion = await openrouter.chat.completions.create({
+    const apiParams = {
       model: OPENROUTER_MODEL,
       messages: [
         {
@@ -271,7 +279,19 @@ ${escapedText}`;
           content: prompt
         }
       ]
-    });
+    };
+
+    // フォールバックモデルが設定されている場合は追加
+    if (fallbackModels.length > 0) {
+      apiParams.extra_body = { models: fallbackModels };
+    }
+
+    const completion = await openrouter.chat.completions.create(apiParams);
+
+    // 実際に使用されたモデルをログ出力
+    if (completion.model) {
+      console.log(`[API] Used model: ${completion.model}`);
+    }
 
     const responseText = completion.choices[0].message.content.trim();
 
@@ -418,9 +438,9 @@ async function translateWithGeminiBatch(text, targetLanguages) {
 
 翻訳対象テキスト：
 ${escapedText}`;
-    
+
     // OpenRouter APIを呼び出し
-    const completion = await openrouter.chat.completions.create({
+    const apiParams = {
       model: OPENROUTER_MODEL,
       messages: [
         {
@@ -432,7 +452,19 @@ ${escapedText}`;
           content: prompt
         }
       ]
-    });
+    };
+
+    // フォールバックモデルが設定されている場合は追加
+    if (fallbackModels.length > 0) {
+      apiParams.extra_body = { models: fallbackModels };
+    }
+
+    const completion = await openrouter.chat.completions.create(apiParams);
+
+    // 実際に使用されたモデルをログ出力
+    if (completion.model) {
+      console.log(`[API] Used model: ${completion.model}`);
+    }
 
     const responseText = completion.choices[0].message.content.trim();
 
@@ -441,7 +473,7 @@ ${escapedText}`;
       // ```json と ``` を除去
       let cleanedText = responseText.replace(/```json\s*/, '').replace(/```\s*$/, '');
       cleanedText = cleanedText.trim();
-      
+
       const translations = JSON.parse(cleanedText);
       return translations;
     } catch (parseError) {
@@ -491,7 +523,8 @@ async function translateWithGemini(text, targetLang) {
 翻訳対象テキスト：
 ${text}`;
 
-    const completion = await openrouter.chat.completions.create({
+    // OpenRouter APIを呼び出し
+    const apiParams = {
       model: OPENROUTER_MODEL,
       messages: [
         {
@@ -503,7 +536,19 @@ ${text}`;
           content: prompt
         }
       ]
-    });
+    };
+
+    // フォールバックモデルが設定されている場合は追加
+    if (fallbackModels.length > 0) {
+      apiParams.extra_body = { models: fallbackModels };
+    }
+
+    const completion = await openrouter.chat.completions.create(apiParams);
+
+    // 実際に使用されたモデルをログ出力
+    if (completion.model) {
+      console.log(`[API] Used model: ${completion.model}`);
+    }
 
     const translatedText = completion.choices[0].message.content.trim();
 

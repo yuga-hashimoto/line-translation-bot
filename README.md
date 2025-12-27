@@ -23,6 +23,8 @@ npm install
 - `LINE_CHANNEL_SECRET`: LINE Messaging APIのチャネルシークレット
 - `OPENROUTER_API_KEY`: OpenRouter APIキー（必須）
 - `OPENROUTER_MODEL`: 使用するモデル名（省略可、デフォルト: `google/gemini-2.5-flash-lite`）
+- `OPENROUTER_MODEL2`: フォールバックモデル1（省略可）
+- `OPENROUTER_MODEL3`: フォールバックモデル2（省略可）
 - `DEEPL_API_KEY`: DeepL APIキー（フォールバック用、省略可）
 
 ```bash
@@ -67,6 +69,38 @@ npm run deploy
 - `google/gemini-2.0-flash-exp:free` - 実験版、無料
 - `google/gemini-pro-1.5` - より高性能
 - その他のモデルは [OpenRouter Models](https://openrouter.ai/docs#models) を参照
+
+### フォールバックモデルの設定
+
+プライマリモデルが利用できない場合に自動的に切り替わるフォールバックモデルを設定できます。
+
+**ローカル環境:**
+```bash
+# .env ファイルで設定
+OPENROUTER_MODEL=google/gemini-2.5-flash-lite
+OPENROUTER_MODEL2=google/gemini-2.0-flash-exp:free
+OPENROUTER_MODEL3=google/gemini-pro-1.5
+```
+
+**本番環境（Cloud Functions/Cloud Run）:**
+```bash
+# デプロイ時に環境変数を指定
+export OPENROUTER_MODEL=google/gemini-2.5-flash-lite
+export OPENROUTER_MODEL2=google/gemini-2.0-flash-exp:free
+export OPENROUTER_MODEL3=google/gemini-pro-1.5
+npm run deploy
+```
+
+**フォールバックの動作:**
+1. まず `OPENROUTER_MODEL` で指定したモデルを使用
+2. 失敗した場合、`OPENROUTER_MODEL2` に自動切り替え
+3. それも失敗した場合、`OPENROUTER_MODEL3` に切り替え
+4. すべて失敗した場合、DeepL APIにフォールバック（設定されている場合）
+
+**注意事項:**
+- フォールバックモデルは省略可能です
+- 設定しない場合は、プライマリモデルのみ使用されます
+- OpenRouterが自動的にフォールバックを処理するため、追加のエラーハンドリングは不要です
 
 ### 4. LINE Developer Console の設定
 1. Webhook URLを設定: `https://[region]-[project-id].cloudfunctions.net/lineTranslationBot`
