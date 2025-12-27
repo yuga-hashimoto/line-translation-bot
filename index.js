@@ -19,10 +19,10 @@ const config = {
 // 特定のグループIDでの翻訳設定
 const FRENCH_ONLY_GROUP_ID = 'C40b7245622ac6e6ec1e6c1def21881e2'; // ハードコード設定
 
-// Geminiクォータエラーフラグ
-let geminiQuotaExceeded = false;
+// 翻訳APIクォータエラーフラグ
+let apiQuotaExceeded = false;
 
-// OpenRouter APIの設定（Gemini経由で使用）
+// OpenRouter APIの設定
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
 const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash-lite";
 
@@ -39,7 +39,7 @@ if (OPENROUTER_API_KEY) {
   console.warn('WARNING: OPENROUTER_API_KEY is not set. Translation features will not work.');
 }
 
-// Gemini System Instruction（共通の人格・ルール設定）
+// Translation System Instruction（共通の翻訳ルール設定）
 const TRANSLATION_SYSTEM_INSTRUCTION = `あなたは高精度な多言語翻訳AIです。
 
 【翻訳の基本ルール】
@@ -134,14 +134,12 @@ function detectLanguageFromText(text) {
 function detectLanguage(text) {
   // メンションやURLを除去してクリーンなテキストで判定
   const cleanedText = cleanTextForLanguageDetection(text);
-  console.log(`言語判定用にテキストをクリーニング: "${text}" -> "${cleanedText}"`);
 
   // クリーニング後のテキストが空になった場合は元のテキストを使用
   const textForDetection = cleanedText.length > 0 ? cleanedText : text;
 
   // 1. 短文や特殊ケースは自前ロジック
   if (textForDetection.length < 10) {
-    console.log('短文のため自前ロジックを使用');
     return detectLanguageFromText(textForDetection);
   }
 
@@ -149,37 +147,29 @@ function detectLanguage(text) {
   if (franc) {
     try {
       const detected = franc(textForDetection, { minLength: 3 });
-      console.log(`Francによる検出結果: ${detected}`);
-      
+
       const languageMap = {
         'jpn': 'ja',
-        'kor': 'ko', 
-        'cmn': 'zh', // 中国語として扱う
-        'zho': 'zh', // 中国語として扱う
+        'kor': 'ko',
+        'cmn': 'zh-TW',
+        'zho': 'zh-TW',
         'eng': 'en'
       };
-      
+
       const mapped = languageMap[detected];
       if (mapped) {
-        console.log(`言語マッピング: ${detected} -> ${mapped}`);
         return mapped;
-      } else {
-        console.log(`未対応言語: ${detected}、フォールバックを使用`);
       }
     } catch (error) {
-      console.log('Franc検出に失敗、フォールバックを使用:', error.message);
+      // Franc検出に失敗した場合はフォールバック
     }
-  } else {
-    console.log('Francがまだ読み込まれていないため、フォールバックを使用');
   }
 
   // 3. フォールバック
-  console.log('フォールバックロジックを使用');
   return detectLanguageFromText(textForDetection);
 }
 
-// Gemini APIを使用して言語判定と一括翻訳を同時に行う関数
-// OpenRouter経由でGemini 2.5 Flash Liteを使用
+// OpenRouter APIを使用して言語判定と一括翻訳を同時に行う関数
 async function translateWithGeminiBatchAndDetect(text, groupId = null) {
   // OpenRouter APIが初期化されていない場合はnullを返す
   if (!openrouter) {
@@ -268,9 +258,7 @@ ${exampleTranslations}
 翻訳対象テキスト：
 ${escapedText}`;
     
-    console.log('OpenRouter経由でGemini言語判定+一括翻訳を実行中...');
-
-    // OpenRouter経由でGemini 2.5 Flash Liteを呼び出し
+    // OpenRouter APIを呼び出し
     const completion = await openrouter.chat.completions.create({
       model: OPENROUTER_MODEL,
       messages: [
@@ -287,53 +275,38 @@ ${escapedText}`;
 
     const responseText = completion.choices[0].message.content.trim();
 
-    console.log('OpenRouter APIレスポンス:', responseText);
-    console.log('レスポンス長:', responseText.length);
-    
     // JSONをパース
     try {
       let cleanedText = responseText.replace(/```json\s*/, '').replace(/```\s*$/, '');
       cleanedText = cleanedText.trim();
-      console.log('クリーンアップ後のテキスト:', cleanedText);
-      
+
       const result = JSON.parse(cleanedText);
-      
+
       if (result.detected_language && result.translations) {
-        console.log(`AI言語判定結果: ${result.detected_language}`);
-        
-        // Geminiが返すキーを統一（zh, zh-CN -> zh-TW）
+        // APIが返すキーを統一（zh, zh-CN -> zh-TW）
         const normalizedTranslations = {};
-        console.log('正規化前の翻訳結果:', result.translations);
-        
+
         for (const [key, value] of Object.entries(result.translations)) {
           let normalizedKey = key;
           // 中国語の各種バリエーションをzh-TWに統一
           if (key === 'zh' || key === 'zh-CN' || key === 'zh-Hans' || key === 'zh-Hant') {
-            console.log(`言語コード正規化: ${key} -> zh-TW`);
             normalizedKey = 'zh-TW';
           }
-          
+
           // 既に同じキーが存在する場合は、より短い（一般的な）翻訳を優先
           if (normalizedTranslations[normalizedKey]) {
-            console.log(`重複キー検出: ${normalizedKey}, 既存: "${normalizedTranslations[normalizedKey]}", 新規: "${value}"`);
             if (value.length < normalizedTranslations[normalizedKey].length) {
-              console.log('より短い翻訳を採用');
               normalizedTranslations[normalizedKey] = value;
-            } else {
-              console.log('既存の翻訳を維持');
             }
           } else {
             normalizedTranslations[normalizedKey] = value;
           }
         }
-        
-        console.log('正規化後の翻訳結果:', normalizedTranslations);
-        
+
         // detected_languageも正規化
         let normalizedSourceLang = result.detected_language;
-        if (result.detected_language === 'zh' || result.detected_language === 'zh-CN' || 
+        if (result.detected_language === 'zh' || result.detected_language === 'zh-CN' ||
             result.detected_language === 'zh-Hans' || result.detected_language === 'zh-Hant') {
-          console.log(`ソース言語コード正規化: ${result.detected_language} -> zh-TW`);
           normalizedSourceLang = 'zh-TW';
         }
         
@@ -394,20 +367,19 @@ ${escapedText}`;
     }
     
   } catch (error) {
-    console.error('Gemini API言語判定+翻訳エラー:', error);
+    console.error('Translation API error (language detection + translation):', error);
     
     // クォータエラーの場合はフラグを設定
     if (isQuotaError(error)) {
-      console.log('Geminiクォータエラーを検出、フラグを設定');
-      geminiQuotaExceeded = true;
+      console.log('翻訳APIクォータエラーを検出、フラグを設定');
+      apiQuotaExceeded = true;
     }
     
     return null;
   }
 }
 
-// Gemini APIを使用して一括翻訳する関数（フォールバック用）
-// OpenRouter経由でGemini 2.5 Flash Liteを使用
+// OpenRouter APIを使用して一括翻訳する関数（フォールバック用）
 async function translateWithGeminiBatch(text, targetLanguages) {
   // OpenRouter APIが初期化されていない場合はnullを返す
   if (!openrouter) {
@@ -416,8 +388,8 @@ async function translateWithGeminiBatch(text, targetLanguages) {
   }
 
   // クォータエラーが発生している場合はスキップ
-  if (geminiQuotaExceeded) {
-    console.log('Geminiクォータエラーのため一括翻訳をスキップ');
+  if (apiQuotaExceeded) {
+    console.log('翻訳APIクォータエラーのため一括翻訳をスキップ');
     return null;
   }
 
@@ -447,9 +419,7 @@ async function translateWithGeminiBatch(text, targetLanguages) {
 翻訳対象テキスト：
 ${escapedText}`;
     
-    console.log('OpenRouter経由でGemini一括翻訳プロンプト:', prompt);
-
-    // OpenRouter経由でGemini 2.5 Flash Liteを呼び出し
+    // OpenRouter APIを呼び出し
     const completion = await openrouter.chat.completions.create({
       model: OPENROUTER_MODEL,
       messages: [
@@ -466,8 +436,6 @@ ${escapedText}`;
 
     const responseText = completion.choices[0].message.content.trim();
 
-    console.log('OpenRouter APIレスポンス:', responseText);
-    
     // JSONをパース（マークダウンコードブロックを除去）
     try {
       // ```json と ``` を除去
@@ -495,13 +463,12 @@ ${escapedText}`;
     }
     
   } catch (error) {
-    console.error('Gemini API翻訳エラー:', error);
+    console.error('Translation API error:', error);
     return null;
   }
 }
 
-// 単一言語翻訳（フォールバック用）
-// OpenRouter経由でGemini 2.5 Flash Liteを使用
+// 単一言語翻訳（OpenRouter API使用）
 async function translateWithGemini(text, targetLang) {
   // OpenRouter APIが初期化されていない場合はnullを返す
   if (!openrouter) {
@@ -510,7 +477,6 @@ async function translateWithGemini(text, targetLang) {
   }
 
   try {
-    // OpenRouter経由でGemini 2.5 Flash Liteを使用
     const languageNames = {
       'ja': '日本語',
       'ko': '한국어',
@@ -525,7 +491,6 @@ async function translateWithGemini(text, targetLang) {
 翻訳対象テキスト：
 ${text}`;
 
-    // OpenRouter経由でGemini 2.5 Flash Liteを呼び出し
     const completion = await openrouter.chat.completions.create({
       model: OPENROUTER_MODEL,
       messages: [
@@ -570,17 +535,10 @@ async function translateWithDeepL(text, targetLang) {
       return null;
     }
     
-    console.log(`DeepL言語コード変換: ${targetLang} -> ${deeplTargetLang}`);
-    
     const params = new URLSearchParams();
     params.append('auth_key', DEEPL_API_KEY);
     params.append('text', text);
     params.append('target_lang', deeplTargetLang);
-    
-    console.log('DeepL APIに送信するパラメータ:');
-    console.log('- text:', text);
-    console.log('- target_lang:', deeplTargetLang);
-    console.log('- auth_key:', DEEPL_API_KEY ? '設定済み' : '未設定');
     
     const response = await axios.post(DEEPL_API_URL, params, {
       headers: {
@@ -594,63 +552,47 @@ async function translateWithDeepL(text, targetLang) {
     
     return null;
   } catch (error) {
-    console.error('DeepL API翻訳エラー:', error);
-    console.error('DeepL APIエラー詳細:', error.response?.data);
-    console.error('DeepL APIステータス:', error.response?.status);
-    console.error('DeepL APIヘッダー:', error.response?.headers);
+    console.error('DeepL API error:', error.message);
     return null;
   }
 }
 
-// 翻訳を試行する関数（Gemini -> DeepLの順）
+// 翻訳を試行する関数（OpenRouter -> DeepLの順）
 async function translateText(text, targetLang) {
-  console.log(`=== 翻訳開始: "${text}" -> ${targetLang} ===`);
-  
-  // まずGeminiで試行
-  console.log(`Geminiで翻訳を試行: ${text} -> ${targetLang}`);
+  // まずOpenRouterで試行
   let result = await translateWithGemini(text, targetLang);
-  
+
   if (result) {
-    console.log('Geminiでの翻訳が成功');
     return result;
   }
-  
-  // Geminiが失敗した場合はDeepLをフォールバック
-  console.log(`Geminiが失敗、DeepLをフォールバックとして使用: ${text} -> ${targetLang}`);
+
+  // OpenRouterが失敗した場合はDeepLをフォールバック
   result = await translateWithDeepL(text, targetLang);
-  
+
   if (result) {
-    console.log('DeepLでの翻訳が成功');
     return result;
   }
-  
-  console.log('すべての翻訳APIが失敗');
+
+  console.error('すべての翻訳APIが失敗しました');
   return null;
 }
 
 // AI言語判定+翻訳を実行する関数
 async function translateWithAIDetection(text, groupId = null) {
   // まずAI言語判定+一括翻訳を試行
-  console.log('AI言語判定+一括翻訳を試行中...');
-  console.log(`入力テキスト（デバッグ用）: ${JSON.stringify(text)}`);
   const aiResult = await translateWithGeminiBatchAndDetect(text, groupId);
-  
-  console.log('aiResult:', aiResult);
-  console.log('aiResult type:', typeof aiResult);
-  
+
   if (aiResult && aiResult.sourceLang && aiResult.translations && Object.keys(aiResult.translations).length > 0) {
-    console.log('AI言語判定+一括翻訳が成功');
     return {
       sourceLang: aiResult.sourceLang,
       translations: aiResult.translations
     };
   }
-  
+
   // AIが失敗した場合はフォールバック（従来の方式）
-  console.log('AI言語判定+翻訳が失敗、フォールバック方式を使用');
   const sourceLang = await detectLanguage(text);
   const translations = await translateToMultipleLanguages(text, sourceLang, groupId);
-  
+
   return {
     sourceLang: sourceLang,
     translations: translations
@@ -698,17 +640,14 @@ async function translateToMultipleLanguages(text, sourceLang, groupId = null) {
     }
   }
   
-  // まずGeminiで一括翻訳を試行
-  console.log(`Geminiで一括翻訳を試行: ${text} -> [${targetLanguages.join(', ')}]`);
+  // まず一括翻訳を試行
   let translations = await translateWithGeminiBatch(text, targetLanguages);
-  
+
   if (translations && Object.keys(translations).length > 0) {
-    console.log('Gemini一括翻訳が成功');
     return translations;
   }
-  
-  // Gemini一括翻訳が失敗した場合は従来の方式（個別翻訳）でフォールバック
-  console.log('Gemini一括翻訳が失敗、個別翻訳でフォールバック');
+
+  // 一括翻訳が失敗した場合は個別翻訳でフォールバック
   translations = {};
   
   for (const targetLang of targetLanguages) {
@@ -811,110 +750,76 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
 
 // Webhook処理関数
 async function handleWebhook(req, res) {
-  console.log('Translation Webhook received');
-  
   // CORS対応
   res.set('Access-Control-Allow-Origin', '*');
   res.set('Access-Control-Allow-Methods', 'GET, POST');
   res.set('Access-Control-Allow-Headers', 'Content-Type, x-line-signature');
-  
+
   if (req.method === 'OPTIONS') {
     res.status(204).send('');
     return;
   }
-  
-  // 署名検証をスキップしてすべての文字に対応
-  console.log('Translation Webhook - 署名チェックをスキップ');
 
   try {
-    const signature = req.headers['x-line-signature'];
-    
     // 署名検証（特定絵文字での問題対応のため一時的にスキップ）
     // 本番運用時は適切な署名検証の実装を検討してください
-    console.log('署名検証をスキップ（絵文字対応のため）');
-    
-    // デバッグ用: 署名が存在するかチェック
-    if (!signature) {
-      console.warn('署名ヘッダーがありません');
-    }
-    
-    // リクエストボディの詳細ログ
-    console.log('リクエストボディ:', JSON.stringify(req.body, null, 2));
-    console.log('リクエストヘッダー:', JSON.stringify(req.headers, null, 2));
-    
+
     if (!req.body) {
-      console.error('リクエストボディが空です');
+      console.error('Empty request body');
       return res.status(400).json({ error: 'Request body is empty' });
     }
-    
+
     if (!req.body.events || !Array.isArray(req.body.events)) {
-      console.log('イベントがありません');
       return res.status(200).json({ message: 'No events found' });
     }
-    
+
     if (req.body.events.length === 0) {
-      console.log('イベント配列が空です');
       return res.status(200).json({ message: 'Empty events array' });
     }
 
     await Promise.all(
       req.body.events.map(async (event, index) => {
         try {
-          console.log(`=== イベント ${index + 1} 処理開始 ===`);
-          console.log('イベント詳細:', JSON.stringify(event, null, 2));
-          
           if (event.type !== 'message') {
-            console.log(`イベント ${index + 1}: メッセージイベントではありません (${event.type})`);
             return;
           }
-          
+
           if (!event.message) {
-            console.log(`イベント ${index + 1}: メッセージオブジェクトがありません`);
             return;
           }
-          
+
           if (event.message.type !== 'text') {
-            console.log(`イベント ${index + 1}: テキストメッセージではありません (${event.message.type})`);
             return;
           }
-          
+
           // グループチャットのみに制限
           if (event.source.type !== 'group') {
-            console.log(`イベント ${index + 1}: グループチャット以外のメッセージのため処理をスキップ (${event.source.type})`);
             return;
           }
-          
-          // グループIDをログに出力
+
           const groupId = event.source.groupId;
-          console.log(`イベント ${index + 1}: グループID = ${groupId}`);
-          
           const text = event.message.text.trim();
-          console.log(`イベント ${index + 1}: メッセージテキスト = "${text}"`);
-          
+
           // replyTokenの存在確認
           if (!event.replyToken) {
-            console.error(`イベント ${index + 1}: replyTokenがありません`);
+            console.error('Missing replyToken');
             return;
           }
-          console.log(`イベント ${index + 1}: replyToken = ${event.replyToken}`);
-          
+
           // 空のメッセージは無視
           if (!text) {
-            console.log(`イベント ${index + 1}: 空のメッセージのためスキップ`);
             return;
           }
-          
+
           // 角括弧が含まれている場合は翻訳をスキップ
           if (text.includes('([)') || text.includes('(])')) {
-            console.log('角括弧が含まれているため翻訳をスキップします:', text);
             return;
           }
-          
+
           // LINE絵文字のみの場合（複数個も含む）翻訳をスキップ
           // LINE絵文字は (xxx) の形式で表現される（emoji, brown, cony, sally等）
           const lineEmojiOnlyPattern = /^(\([^)]+\)\s*)+$/;
           if (lineEmojiOnlyPattern.test(text)) {
-            console.log('LINE絵文字のみのため翻訳をスキップします:', text);
             return;
           }
 
@@ -922,54 +827,38 @@ async function handleWebhook(req, res) {
           // URLと空白・改行のみで構成されているメッセージを検出
           const urlOnlyPattern = /^(https?:\/\/[^\s]+\s*)+$/;
           if (urlOnlyPattern.test(text)) {
-            console.log('URLのみのため翻訳をスキップします:', text);
             return;
           }
 
-          console.log(`翻訳対象テキスト: "${text}"`);
-          console.log(`テキスト長: ${text.length}文字`);
-          console.log(`改行を含む: ${text.includes('\n') ? 'はい' : 'いいえ'}`);
-          if (text.includes('\n')) {
-            console.log(`改行数: ${(text.match(/\n/g) || []).length}`);
-            console.log(`行に分割: ${JSON.stringify(text.split('\n'))}`);
-          }
+          console.log(`[Translation] Text: "${text}" | Model: ${OPENROUTER_MODEL}`);
           
           // AI言語判定+翻訳実行
           const result = await translateWithAIDetection(text, groupId);
           const sourceLang = result.sourceLang;
           const translations = result.translations;
-          
-          console.log(`検出された言語: ${sourceLang}`);
-          
+
           if (Object.keys(translations).length === 0) {
-            console.log('翻訳結果が空です');
+            console.error('Translation failed: empty result');
             await client.replyMessage(event.replyToken, {
               type: 'text',
               text: '翻訳に失敗しました。もう一度お試しください。'
             });
             return;
           }
-          
+
+          console.log(`[Translation] Detected: ${sourceLang} | Translations: ${Object.keys(translations).join(', ')}`);
+
           // 翻訳結果メッセージを生成
           const replyMessage = generateTranslationMessage(text, sourceLang, translations);
-          
+
           try {
             await client.replyMessage(event.replyToken, replyMessage);
-            console.log('メッセージ送信成功');
           } catch (replyError) {
-            console.error('メッセージ送信エラー:', replyError);
-            console.error('エラー詳細:', {
-              status: replyError.response?.status,
-              statusText: replyError.response?.statusText,
-              data: replyError.response?.data,
-              headers: replyError.response?.headers
-            });
-            // フォールバックメッセージは送信せず、エラーログのみ出力
-            console.log('翻訳は成功しましたが、メッセージ送信に失敗しました');
+            console.error('Reply error:', replyError.message);
           }
           
         } catch (err) {
-          console.error('イベント処理中にエラーが発生しました:', err);
+          console.error('Event processing error:', err.message);
           return Promise.resolve();
         }
       })
@@ -977,7 +866,7 @@ async function handleWebhook(req, res) {
 
     res.status(200).json({ message: 'OK' });
   } catch (error) {
-    console.error('Webhookの処理中にエラーが発生しました:', error);
+    console.error('Webhook processing error:', error.message);
     res.status(200).json({
       message: 'Error occurred but returning 200',
       error: error.message
