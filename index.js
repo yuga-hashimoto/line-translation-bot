@@ -741,6 +741,45 @@ async function translateToMultipleLanguages(text, sourceLang, groupId = null) {
   return translations;
 }
 
+// テキストを指定された長さのチャンクに分割する関数
+function splitTextIntoChunks(text, maxLength) {
+  if (text.length <= maxLength) {
+    return [text];
+  }
+
+  const chunks = [];
+  let currentChunk = '';
+  const sentences = text.split(/(?<=[。！？\n.!?])/); // 文の区切りで分割
+
+  for (const sentence of sentences) {
+    if (currentChunk.length + sentence.length <= maxLength) {
+      currentChunk += sentence;
+    } else {
+      if (currentChunk) {
+        chunks.push(currentChunk);
+      }
+
+      // 1文が長すぎる場合は強制的に分割
+      if (sentence.length > maxLength) {
+        let remaining = sentence;
+        while (remaining.length > 0) {
+          chunks.push(remaining.substring(0, maxLength));
+          remaining = remaining.substring(maxLength);
+        }
+        currentChunk = '';
+      } else {
+        currentChunk = sentence;
+      }
+    }
+  }
+
+  if (currentChunk) {
+    chunks.push(currentChunk);
+  }
+
+  return chunks.length > 0 ? chunks : [text];
+}
+
 // 翻訳結果のメッセージを生成する関数
 function generateTranslationMessage(originalText, sourceLang, translations) {
   const languageNames = {
@@ -751,13 +790,13 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
     'th': '🇹🇭 ภาษาไทย',
     'zh-TW': '🇹🇼 繁體中文'
   };
-  
+
   // テキストを制限内に収める（LINE Flex Messageの制限対応）
   const truncateText = (text, maxLength = 2000) => {
     if (!text) return '';
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
   };
-  
+
   const contents = [
     {
       type: 'text',
@@ -767,13 +806,13 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
       color: '#1DB446'
     }
   ];
-  
+
   // 翻訳結果を追加（すべての翻訳を表示）
   const translationEntries = Object.entries(translations);
-  
+
   translationEntries.forEach(([lang, text]) => {
     const truncatedText = truncateText(text, 300); // 各翻訳を300文字以内に制限
-    
+
     contents.push(
       {
         type: 'separator',
@@ -796,10 +835,10 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
       }
     );
   });
-  
+
   // altTextも制限内に収める
   const altText = truncateText(originalText, 400);
-  
+
   try {
     return {
       type: 'flex',
@@ -818,14 +857,84 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
   } catch (error) {
     console.error('Flex Message生成エラー:', error);
     // エラーの場合はシンプルなテキストメッセージにフォールバック
-    const fallbackText = `🌍 翻訳結果:\n\n${Object.entries(translations).map(([lang, text]) => 
+    const fallbackText = `🌍 翻訳結果:\n\n${Object.entries(translations).map(([lang, text]) =>
       `${languageNames[lang] || lang}: ${truncateText(text, 200)}`
     ).join('\n\n')}`;
-    
+
     return {
       type: 'text',
       text: fallbackText.length > 5000 ? fallbackText.substring(0, 4990) + '...' : fallbackText
     };
+  }
+}
+
+// 翻訳結果を送信する関数（長文対応）
+async function sendTranslationMessages(client, replyToken, groupId, text, sourceLang, translations) {
+  const languageNames = {
+    'ja': '🇯🇵 日本語',
+    'ko': '🇰🇷 한국어',
+    'en': '🇺🇸 English',
+    'fr': '🇫🇷 Français',
+    'th': '🇹🇭 ภาษาไทย',
+    'zh-TW': '🇹🇼 繁體中文'
+  };
+
+  // 最大文字数の確認
+  const MAX_SHORT_TEXT = 500; // この長さ以下ならFlex Messageを使用
+  const MAX_LINE_MESSAGE = 4500; // LINEメッセージの安全な上限（余裕を持たせる）
+
+  // すべての翻訳が短い場合は従来のFlex Messageを使用
+  const allTranslationsShort = Object.values(translations).every(t => t.length <= MAX_SHORT_TEXT);
+
+  if (allTranslationsShort) {
+    const replyMessage = generateTranslationMessage(text, sourceLang, translations);
+    await client.replyMessage(replyToken, replyMessage);
+    return;
+  }
+
+  // 長文の場合：各言語を個別のメッセージとして送信
+  const messages = [];
+
+  // 各言語の翻訳をメッセージとして追加
+  for (const [lang, translatedText] of Object.entries(translations)) {
+    const langName = languageNames[lang] || lang;
+    const prefix = `${langName}:\n`;
+
+    // LINEの文字数制限（5000文字）を考慮してテキストを分割
+    const maxTextLength = MAX_LINE_MESSAGE - prefix.length;
+
+    if (translatedText.length <= maxTextLength) {
+      // 1メッセージで収まる場合
+      messages.push({
+        type: 'text',
+        text: prefix + translatedText
+      });
+    } else {
+      // 分割が必要な場合
+      const chunks = splitTextIntoChunks(translatedText, maxTextLength);
+      chunks.forEach((chunk, index) => {
+        const chunkPrefix = chunks.length > 1
+          ? `${langName} (${index + 1}/${chunks.length}):\n`
+          : prefix;
+        messages.push({
+          type: 'text',
+          text: chunkPrefix + chunk
+        });
+      });
+    }
+  }
+
+  // replyMessageで一度に送信（LINEは最大5件まで）
+  if (messages.length > 0) {
+    // 最大5件に制限
+    const messagesToSend = messages.slice(0, 5);
+
+    // 5件を超える場合は警告をログ出力
+    if (messages.length > 5) {
+      console.warn(`[Warning] Total messages: ${messages.length}, sending first 5 only`);
+    }
+
+    await client.replyMessage(replyToken, messagesToSend);
   }
 }
 
@@ -929,11 +1038,9 @@ async function handleWebhook(req, res) {
 
           console.log(`[Translation] Detected: ${sourceLang} | Translations: ${Object.keys(translations).join(', ')}`);
 
-          // 翻訳結果メッセージを生成
-          const replyMessage = generateTranslationMessage(text, sourceLang, translations);
-
+          // 翻訳結果を送信（長文対応版）
           try {
-            await client.replyMessage(event.replyToken, replyMessage);
+            await sendTranslationMessages(client, event.replyToken, groupId, text, sourceLang, translations);
           } catch (replyError) {
             console.error('Reply error:', replyError.message);
           }
