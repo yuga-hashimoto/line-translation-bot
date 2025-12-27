@@ -24,6 +24,7 @@ let geminiQuotaExceeded = false;
 
 // OpenRouter APIの設定（Gemini経由で使用）
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "google/gemini-2.5-flash-lite";
 
 // OpenRouterクライアントの初期化（APIキーが設定されている場合のみ）
 let openrouter = null;
@@ -33,6 +34,7 @@ if (OPENROUTER_API_KEY) {
     apiKey: OPENROUTER_API_KEY
   });
   console.log('OpenRouter API initialized');
+  console.log(`Using model: ${OPENROUTER_MODEL}`);
 } else {
   console.warn('WARNING: OPENROUTER_API_KEY is not set. Translation features will not work.');
 }
@@ -270,7 +272,7 @@ ${escapedText}`;
 
     // OpenRouter経由でGemini 2.5 Flash Liteを呼び出し
     const completion = await openrouter.chat.completions.create({
-      model: "google/gemini-2.5-flash-lite",
+      model: OPENROUTER_MODEL,
       messages: [
         {
           role: "system",
@@ -449,7 +451,7 @@ ${escapedText}`;
 
     // OpenRouter経由でGemini 2.5 Flash Liteを呼び出し
     const completion = await openrouter.chat.completions.create({
-      model: "google/gemini-2.5-flash-lite",
+      model: OPENROUTER_MODEL,
       messages: [
         {
           role: "system",
@@ -525,7 +527,7 @@ ${text}`;
 
     // OpenRouter経由でGemini 2.5 Flash Liteを呼び出し
     const completion = await openrouter.chat.completions.create({
-      model: "google/gemini-2.5-flash-lite",
+      model: OPENROUTER_MODEL,
       messages: [
         {
           role: "system",
