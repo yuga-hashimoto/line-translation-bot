@@ -47,27 +47,27 @@ if (OPENROUTER_API_KEY) {
   console.warn('WARNING: OPENROUTER_API_KEY is not set. Translation features will not work.');
 }
 
-// Translation System Instruction（共通の翻訳ルール設定）
-const TRANSLATION_SYSTEM_INSTRUCTION = `あなたは高精度な多言語翻訳AIです。
+// Translation System Instruction
+const TRANSLATION_SYSTEM_INSTRUCTION = `You are a high-precision multilingual translation AI.
 
-【翻訳の基本ルール】
-1. 原文の意味を正確に翻訳する
-2. 改行を含むテキストも正確に翻訳し、改行を保持する
-3. 原文にない句読点（？！。など）を勝手に追加しない
-4. 原文の句読点や記号を正確に保持する
-5. LINEレンジャーのグループLINEで翻訳機能を使います
+**Translation Rules:**
+1. Translate the original text accurately
+2. Preserve line breaks in the translation
+3. Do not add punctuation marks (? ! . etc.) that are not in the original text
+4. Preserve all punctuation and symbols from the original text exactly
+5. This translation is for a LINE messenger group chat
 
-【絵文字の扱い】
-1. Unicode絵文字（😊🎉❤️など）はそのまま保持し、翻訳や変換をしない
-2. 絵文字を「(emoji)」「（絵文字）」「(이모지)」「(表情符號)」などのテキストに変換しない
-3. 翻訳結果に「(emoji)」「(絵文字)」「(이모지)」「(表情符號)」などのテキストを含めない
-4. LINE絵文字のテキスト表現（例：(moon smirk)、(brown)、(sally)など）は翻訳結果に含めない
-5. 括弧で囲まれたテキスト (xxx) の形式はLINE絵文字なので、翻訳結果から除外する
+**Emoji Handling:**
+1. Keep Unicode emojis (😊🎉❤️ etc.) as-is without translation or conversion
+2. Do not convert emojis to text like "(emoji)", "（絵文字）", "(이모지)", or "(表情符號)"
+3. Do not include text representations like "(emoji)", "(絵文字)", "(이모지)", or "(表情符號)" in translations
+4. Exclude LINE emoji text representations (e.g., (moon smirk), (brown), (sally)) from translation results
+5. Text in the format (xxx) with parentheses are LINE emojis and should be excluded from translation output
 
-【出力形式】
-1. JSON形式で結果を返す場合、厳密にJSON構造を守る
-2. マークダウンのコードブロック記号（\`\`\`）は使用しない
-3. JSON以外の余計な文字を含めない`;
+**Output Format:**
+1. When returning JSON format, strictly follow JSON structure
+2. Do not use markdown code block markers (\`\`\`)
+3. Do not include any extra characters outside of JSON`;
 
 // DeepL APIの設定（フォールバック用）
 const DEEPL_API_KEY = process.env.DEEPL_API_KEY;
@@ -210,9 +210,9 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
     // 改行を含むテキストをJSON文字列として安全にエスケープ
     const escapedText = JSON.stringify(text);
 
-    // グループに応じた翻訳例を作成（検出言語は翻訳に含めない例を複数提示）
+    // Create translation examples based on group (showing multiple patterns where detected language is excluded)
     const exampleTranslations = groupId === FRENCH_ONLY_GROUP_ID
-      ? `例1: 日本語を検出した場合
+      ? `Example 1: When Japanese is detected
 {
   "detected_language": "ja",
   "translations": {
@@ -222,7 +222,7 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
   }
 }
 
-例2: 英語を検出した場合
+Example 2: When English is detected
 {
   "detected_language": "en",
   "translations": {
@@ -231,7 +231,7 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
     "zh-TW": "中文翻譯"
   }
 }`
-      : `例1: 日本語を検出した場合
+      : `Example 1: When Japanese is detected
 {
   "detected_language": "ja",
   "translations": {
@@ -241,7 +241,7 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
   }
 }
 
-例2: 英語を検出した場合
+Example 2: When English is detected
 {
   "detected_language": "en",
   "translations": {
@@ -251,44 +251,44 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
   }
 }`;
 
-    // 翻訳すべき言語リストを作成（元の言語を除く）
+    // Create list of target languages (excluding the original language)
     const targetLanguagesList = availableLanguages.filter(lang => lang !== 'ja').join(', ');
 
-    const prompt = `以下のテキストの言語を判定し、適切な言語に翻訳してください。
+    const prompt = `Detect the language of the following text and translate it into appropriate languages.
 
-対象言語：${targetLanguageDescription}
-利用可能な言語コード：${availableLanguages.join(', ')}
+Target languages: ${targetLanguageDescription}
+Available language codes: ${availableLanguages.join(', ')}
 
-タスク：
-1. 入力テキストの言語を判定
-   - @メンション（例: @ユーザー名）や中国語の人名は無視し、実際のメッセージ内容のみで判定してください
-   - ひらがな・カタカナが含まれている場合は日本語と判定してください
-   - ハングルが含まれている場合は韓国語と判定してください
-   - メッセージ全体の文脈を考慮して判定してください
+Tasks:
+1. Detect the language of the input text
+   - Ignore @mentions (e.g., @username) and Chinese person names, detect language based only on the actual message content
+   - If hiragana or katakana is present, detect as Japanese
+   - If Hangul is present, detect as Korean
+   - Consider the context of the entire message for detection
 
-2. 判定した言語以外の**すべての対象言語**に翻訳してください
-   - **CRITICAL: 検出した言語(detected_language)と同じ言語は翻訳結果に絶対に含めないでください**
-   - 例: 英語と判定したら、英語(en)は翻訳結果に含めず、他の言語のみ翻訳してください
-   - 絶対に言語を省略しないでください（ただし検出した言語は除く）
-   - 必ず対象言語全てに翻訳を提供してください（ただし検出した言語は除く）
+2. Translate into **ALL target languages except the detected language**
+   - **CRITICAL: Never include the detected language in the translations object**
+   - Example: If you detect English, do NOT include "en" in translations, only translate to other languages
+   - Do not omit any languages (except the detected language)
+   - Provide translations for all target languages (except the detected language)
 
-3. 言語コードは厳密に以下のみ使用: ${availableLanguages.join(', ')}
+3. Use only these language codes strictly: ${availableLanguages.join(', ')}
 
-4. 台湾語（繁体字中国語）は必ず "zh-TW" のみ使用
+4. For Traditional Chinese (Taiwan), use only "zh-TW"
 
-5. 各言語につき1つの翻訳のみ提供
+5. Provide only one translation per language
 
-重要な注意事項：
-- 「@毛沢東 こんにちは」のような場合、@毛沢東は無視し、「こんにちは」の部分で言語判定すること
-- ひらがなが含まれていれば日本語と判定すること
-- メンションや人名に含まれる漢字に惑わされないこと
-- **検出した言語と同じ言語は翻訳結果に絶対に含めないこと**
-- 判定した言語以外の全ての言語に必ず翻訳すること
+Important notes:
+- For text like "@毛沢東 こんにちは", ignore "@毛沢東" and detect language from "こんにちは"
+- If hiragana is present, detect as Japanese
+- Do not be misled by Chinese characters in mentions or person names
+- **Never include the detected language in the translations object**
+- Translate to all languages except the detected one
 
-出力形式（JSON）：
+Output format (JSON):
 ${exampleTranslations}
 
-翻訳対象テキスト：
+Text to translate:
 ${escapedText}`;
 
     // OpenRouter APIを呼び出し
@@ -453,26 +453,26 @@ async function translateWithGeminiBatch(text, targetLanguages) {
     // OpenRouter経由でGemini 2.5 Flash Liteを使用
     
     const languageNames = {
-      'ja': '日本語',
-      'ko': '한국어', 
+      'ja': 'Japanese',
+      'ko': 'Korean',
       'en': 'English',
-      'fr': 'Français',
-      'th': 'ภาษาไทย',
-      'zh-TW': '繁體中文'
+      'fr': 'French',
+      'th': 'Thai',
+      'zh-TW': 'Traditional Chinese (Taiwan)'
     };
-    
-    // 対象言語のリストを作成
-    const targetLangList = targetLanguages.map(lang => languageNames[lang]).join('、');
-    
-    // 改行を含むテキストをJSON文字列として安全にエスケープ
+
+    // Create list of target languages
+    const targetLangList = targetLanguages.map(lang => languageNames[lang]).join(', ');
+
+    // Escape text safely as JSON string (handles line breaks)
     const escapedText = JSON.stringify(text);
-    
-    const prompt = `以下のテキストを${targetLangList}に翻訳してください。
 
-出力形式（JSON）：
-{${targetLanguages.map(lang => `"${lang}": "翻訳結果"`).join(', ')}}
+    const prompt = `Translate the following text into ${targetLangList}.
 
-翻訳対象テキスト：
+Output format (JSON):
+{${targetLanguages.map(lang => `"${lang}": "translation result"`).join(', ')}}
+
+Text to translate:
 ${escapedText}`;
 
     // OpenRouter APIを呼び出し
@@ -546,17 +546,17 @@ async function translateWithGemini(text, targetLang) {
 
   try {
     const languageNames = {
-      'ja': '日本語',
-      'ko': '한국어',
+      'ja': 'Japanese',
+      'ko': 'Korean',
       'en': 'English',
-      'fr': 'Français',
-      'th': 'ภาษาไทย',
-      'zh': '中文'
+      'fr': 'French',
+      'th': 'Thai',
+      'zh': 'Chinese'
     };
 
-    const prompt = `以下のテキストを${languageNames[targetLang]}に翻訳してください。翻訳結果のみを返してください。
+    const prompt = `Translate the following text into ${languageNames[targetLang]}. Return only the translation result.
 
-翻訳対象テキスト：
+Text to translate:
 ${text}`;
 
     // OpenRouter APIを呼び出し
