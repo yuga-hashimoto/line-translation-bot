@@ -811,7 +811,7 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
   const translationEntries = Object.entries(translations);
 
   translationEntries.forEach(([lang, text]) => {
-    const truncatedText = truncateText(text, 300); // 各翻訳を300文字以内に制限
+    const truncatedText = truncateText(text, 1500); // 各翻訳を1500文字以内に制限
 
     contents.push(
       {
@@ -880,7 +880,7 @@ async function sendTranslationMessages(client, replyToken, groupId, text, source
   };
 
   // 最大文字数の確認
-  const MAX_SHORT_TEXT = 500; // この長さ以下ならFlex Messageを使用
+  const MAX_SHORT_TEXT = 1500; // この長さ以下ならFlex Messageを使用
   const MAX_LINE_MESSAGE = 4500; // LINEメッセージの安全な上限（余裕を持たせる）
 
   // すべての翻訳が短い場合は従来のFlex Messageを使用
