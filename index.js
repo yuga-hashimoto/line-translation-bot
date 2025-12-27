@@ -288,6 +288,11 @@ ${escapedText}`;
 
     const completion = await openrouter.chat.completions.create(apiParams);
 
+    // 実際に使用されたモデルをログ出力
+    if (completion.model) {
+      console.log(`[API] Used model: ${completion.model}`);
+    }
+
     const responseText = completion.choices[0].message.content.trim();
 
     // JSONをパース
@@ -456,6 +461,11 @@ ${escapedText}`;
 
     const completion = await openrouter.chat.completions.create(apiParams);
 
+    // 実際に使用されたモデルをログ出力
+    if (completion.model) {
+      console.log(`[API] Used model: ${completion.model}`);
+    }
+
     const responseText = completion.choices[0].message.content.trim();
 
     // JSONをパース（マークダウンコードブロックを除去）
@@ -463,7 +473,7 @@ ${escapedText}`;
       // ```json と ``` を除去
       let cleanedText = responseText.replace(/```json\s*/, '').replace(/```\s*$/, '');
       cleanedText = cleanedText.trim();
-      
+
       const translations = JSON.parse(cleanedText);
       return translations;
     } catch (parseError) {
@@ -534,6 +544,11 @@ ${text}`;
     }
 
     const completion = await openrouter.chat.completions.create(apiParams);
+
+    // 実際に使用されたモデルをログ出力
+    if (completion.model) {
+      console.log(`[API] Used model: ${completion.model}`);
+    }
 
     const translatedText = completion.choices[0].message.content.trim();
 
