@@ -210,22 +210,44 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
     // 改行を含むテキストをJSON文字列として安全にエスケープ
     const escapedText = JSON.stringify(text);
 
-    // グループに応じた翻訳例を作成
+    // グループに応じた翻訳例を作成（検出言語は翻訳に含めない例を複数提示）
     const exampleTranslations = groupId === FRENCH_ONLY_GROUP_ID
-      ? `{
+      ? `例1: 日本語を検出した場合
+{
   "detected_language": "ja",
   "translations": {
     "fr": "Traduction française",
     "en": "English translation",
     "zh-TW": "中文翻譯"
   }
+}
+
+例2: 英語を検出した場合
+{
+  "detected_language": "en",
+  "translations": {
+    "ja": "日本語翻訳",
+    "fr": "Traduction française",
+    "zh-TW": "中文翻譯"
+  }
 }`
-      : `{
+      : `例1: 日本語を検出した場合
+{
   "detected_language": "ja",
   "translations": {
     "ko": "한국어 번역",
     "zh-TW": "中文翻譯",
     "en": "English translation"
+  }
+}
+
+例2: 英語を検出した場合
+{
+  "detected_language": "en",
+  "translations": {
+    "ja": "日本語翻訳",
+    "ko": "한국어 번역",
+    "zh-TW": "中文翻譯"
   }
 }`;
 
@@ -245,8 +267,10 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
    - メッセージ全体の文脈を考慮して判定してください
 
 2. 判定した言語以外の**すべての対象言語**に翻訳してください
-   - 絶対に言語を省略しないでください
-   - 必ず対象言語全てに翻訳を提供してください
+   - **CRITICAL: 検出した言語(detected_language)と同じ言語は翻訳結果に絶対に含めないでください**
+   - 例: 英語と判定したら、英語(en)は翻訳結果に含めず、他の言語のみ翻訳してください
+   - 絶対に言語を省略しないでください（ただし検出した言語は除く）
+   - 必ず対象言語全てに翻訳を提供してください（ただし検出した言語は除く）
 
 3. 言語コードは厳密に以下のみ使用: ${availableLanguages.join(', ')}
 
@@ -258,7 +282,8 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
 - 「@毛沢東 こんにちは」のような場合、@毛沢東は無視し、「こんにちは」の部分で言語判定すること
 - ひらがなが含まれていれば日本語と判定すること
 - メンションや人名に含まれる漢字に惑わされないこと
-- 判定した言語以外の全ての言語に必ず翻訳すること（例：日本語と判定した場合、${targetLanguagesList}の全てに翻訳）
+- **検出した言語と同じ言語は翻訳結果に絶対に含めないこと**
+- 判定した言語以外の全ての言語に必ず翻訳すること
 
 出力形式（JSON）：
 ${exampleTranslations}
@@ -329,7 +354,13 @@ ${escapedText}`;
             result.detected_language === 'zh-Hans' || result.detected_language === 'zh-Hant') {
           normalizedSourceLang = 'zh-TW';
         }
-        
+
+        // 検出した言語と同じ言語が翻訳結果に含まれている場合は削除（安全策）
+        if (normalizedTranslations[normalizedSourceLang]) {
+          console.log(`[Warning] Detected language ${normalizedSourceLang} was included in translations. Removing it.`);
+          delete normalizedTranslations[normalizedSourceLang];
+        }
+
         return {
           sourceLang: normalizedSourceLang,
           translations: normalizedTranslations
@@ -367,12 +398,17 @@ ${escapedText}`;
             
             // detected_languageも正規化
             let normalizedSourceLang = result.detected_language;
-            if (result.detected_language === 'zh' || result.detected_language === 'zh-CN' || 
+            if (result.detected_language === 'zh' || result.detected_language === 'zh-CN' ||
                 result.detected_language === 'zh-Hans' || result.detected_language === 'zh-Hant') {
-              console.log(`ソース言語コード正規化: ${result.detected_language} -> zh-TW`);
               normalizedSourceLang = 'zh-TW';
             }
-            
+
+            // 検出した言語と同じ言語が翻訳結果に含まれている場合は削除（安全策）
+            if (normalizedTranslations[normalizedSourceLang]) {
+              console.log(`[Warning] Detected language ${normalizedSourceLang} was included in translations. Removing it.`);
+              delete normalizedTranslations[normalizedSourceLang];
+            }
+
             return {
               sourceLang: normalizedSourceLang,
               translations: normalizedTranslations
