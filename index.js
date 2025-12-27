@@ -1,7 +1,7 @@
 const line = require('@line/bot-sdk');
 const axios = require('axios');
 const express = require('express');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const OpenAI = require('openai');
 
 // Dynamic import for franc (ES module)
 let franc;
@@ -22,9 +22,12 @@ const FRENCH_ONLY_GROUP_ID = 'C40b7245622ac6e6ec1e6c1def21881e2'; // ハード�
 // Geminiクォータエラーフラグ
 let geminiQuotaExceeded = false;
 
-// Gemini APIの設定
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
+// OpenRouter APIの設定（Gemini経由で使用）
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const openrouter = new OpenAI({
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: OPENROUTER_API_KEY
+});
 
 // Gemini System Instruction（共通の人格・ルール設定）
 const TRANSLATION_SYSTEM_INSTRUCTION = `あなたは高精度な多言語翻訳AIです。
@@ -166,12 +169,10 @@ function detectLanguage(text) {
 }
 
 // Gemini APIを使用して言語判定と一括翻訳を同時に行う関数
+// OpenRouter経由でGemini 2.5 Flash Liteを使用
 async function translateWithGeminiBatchAndDetect(text, groupId = null) {
   try {
-    const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.5-flash-lite',
-      systemInstruction: TRANSLATION_SYSTEM_INSTRUCTION
-    });
+    // OpenRouter経由でGemini 2.5 Flash Liteを使用
     
     const languageNames = {
       'ja': '日本語',
@@ -251,13 +252,26 @@ ${exampleTranslations}
 翻訳対象テキスト：
 ${escapedText}`;
     
-    console.log('Gemini言語判定+一括翻訳を実行中...');
-    
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const responseText = response.text().trim();
-    
-    console.log('Gemini APIレスポンス:', responseText);
+    console.log('OpenRouter経由でGemini言語判定+一括翻訳を実行中...');
+
+    // OpenRouter経由でGemini 2.5 Flash Liteを呼び出し
+    const completion = await openrouter.chat.completions.create({
+      model: "google/gemini-2.5-flash-lite",
+      messages: [
+        {
+          role: "system",
+          content: TRANSLATION_SYSTEM_INSTRUCTION
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    });
+
+    const responseText = completion.choices[0].message.content.trim();
+
+    console.log('OpenRouter APIレスポンス:', responseText);
     console.log('レスポンス長:', responseText.length);
     
     // JSONをパース
@@ -377,18 +391,16 @@ ${escapedText}`;
 }
 
 // Gemini APIを使用して一括翻訳する関数（フォールバック用）
+// OpenRouter経由でGemini 2.5 Flash Liteを使用
 async function translateWithGeminiBatch(text, targetLanguages) {
   // クォータエラーが発生している場合はスキップ
   if (geminiQuotaExceeded) {
     console.log('Geminiクォータエラーのため一括翻訳をスキップ');
     return null;
   }
-  
+
   try {
-    const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.5-flash-lite',
-      systemInstruction: TRANSLATION_SYSTEM_INSTRUCTION
-    });
+    // OpenRouter経由でGemini 2.5 Flash Liteを使用
     
     const languageNames = {
       'ja': '日本語',
@@ -413,13 +425,26 @@ async function translateWithGeminiBatch(text, targetLanguages) {
 翻訳対象テキスト：
 ${escapedText}`;
     
-    console.log('Gemini一括翻訳プロンプト:', prompt);
-    
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const responseText = response.text().trim();
-    
-    console.log('Gemini APIレスポンス:', responseText);
+    console.log('OpenRouter経由でGemini一括翻訳プロンプト:', prompt);
+
+    // OpenRouter経由でGemini 2.5 Flash Liteを呼び出し
+    const completion = await openrouter.chat.completions.create({
+      model: "google/gemini-2.5-flash-lite",
+      messages: [
+        {
+          role: "system",
+          content: TRANSLATION_SYSTEM_INSTRUCTION
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    });
+
+    const responseText = completion.choices[0].message.content.trim();
+
+    console.log('OpenRouter APIレスポンス:', responseText);
     
     // JSONをパース（マークダウンコードブロックを除去）
     try {
@@ -454,13 +479,10 @@ ${escapedText}`;
 }
 
 // 単一言語翻訳（フォールバック用）
+// OpenRouter経由でGemini 2.5 Flash Liteを使用
 async function translateWithGemini(text, targetLang) {
   try {
-    const model = genAI.getGenerativeModel({ 
-      model: 'gemini-2.5-flash-lite',
-      systemInstruction: TRANSLATION_SYSTEM_INSTRUCTION
-    });
-    
+    // OpenRouter経由でGemini 2.5 Flash Liteを使用
     const languageNames = {
       'ja': '日本語',
       'ko': '한국어',
@@ -469,19 +491,32 @@ async function translateWithGemini(text, targetLang) {
       'th': 'ภาษาไทย',
       'zh': '中文'
     };
-    
+
     const prompt = `以下のテキストを${languageNames[targetLang]}に翻訳してください。翻訳結果のみを返してください。
 
 翻訳対象テキスト：
 ${text}`;
-    
-    const result = await model.generateContent(prompt);
-    const response = await result.response;
-    const translatedText = response.text().trim();
-    
+
+    // OpenRouter経由でGemini 2.5 Flash Liteを呼び出し
+    const completion = await openrouter.chat.completions.create({
+      model: "google/gemini-2.5-flash-lite",
+      messages: [
+        {
+          role: "system",
+          content: TRANSLATION_SYSTEM_INSTRUCTION
+        },
+        {
+          role: "user",
+          content: prompt
+        }
+      ]
+    });
+
+    const translatedText = completion.choices[0].message.content.trim();
+
     return translatedText || null;
   } catch (error) {
-    console.error('Gemini API翻訳エラー:', error);
+    console.error('OpenRouter API翻訳エラー:', error);
     return null;
   }
 }
