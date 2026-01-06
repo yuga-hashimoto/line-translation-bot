@@ -143,8 +143,9 @@ function cleanTextForTranslation(text) {
   const lineEmojiPattern = /\([a-z]+(?:[\s-][a-z]+)*\)/gi;
   cleaned = cleaned.replace(lineEmojiPattern, '');
 
-  // 余分な空白を整理
-  return cleaned.replace(/\s+/g, ' ').trim();
+  // 余分な空白を整理（改行は保持）
+  // [^\S\n]+ は改行以外の空白文字にマッチ
+  return cleaned.replace(/[^\S\n]+/g, ' ').replace(/\n+/g, '\n').trim();
 }
 
 // 後方互換性のためのエイリアス
