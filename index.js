@@ -138,9 +138,9 @@ function cleanTextForTranslation(text) {
   // メンションを除去（@ユーザー名）
   cleaned = cleaned.replace(/@[^\s]+/g, '');
 
-  // LINE絵文字テキストパターン: (word word), (word-word) など
-  // 2語以上がスペースまたはハイフンで連結されたもののみ（単一単語は除外しない）
-  const lineEmojiPattern = /\([a-z]+[\s-][a-z]+(?:[\s-][a-z]+)*\)/gi;
+  // LINE絵文字テキストパターン: (word), (word word), (word-word) など
+  // 小文字英単語がスペースまたはハイフンで連結されたもの
+  const lineEmojiPattern = /\([a-z]+(?:[\s-][a-z]+)*\)/gi;
   cleaned = cleaned.replace(lineEmojiPattern, '');
 
   // 余分な空白を整理（改行は保持）
