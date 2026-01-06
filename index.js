@@ -127,17 +127,29 @@ async function saveTranslationLog(logData) {
   }
 }
 
-// LINE絵文字テキスト表現を除去する関数
-// 例: (moon furious), (resentful face), (brown), (cony) など
-function removeLineEmojiText(text) {
+// 翻訳前の前処理：不要な要素を除去する関数
+// - LINE絵文字テキスト: (moon furious), (resentful face), (brown), (cony) など
+// - メンション: @ユーザー名
+function cleanTextForTranslation(text) {
   if (!text) return text;
+
+  let cleaned = text;
+
+  // メンションを除去（@ユーザー名）
+  cleaned = cleaned.replace(/@[^\s]+/g, '');
 
   // LINE絵文字テキストパターン: (word), (word word), (word-word) など
   // 小文字英単語がスペースまたはハイフンで連結されたもの
   const lineEmojiPattern = /\([a-z]+(?:[\s-][a-z]+)*\)/gi;
+  cleaned = cleaned.replace(lineEmojiPattern, '');
 
-  // 除去して、余分な空白を整理
-  return text.replace(lineEmojiPattern, '').replace(/\s+/g, ' ').trim();
+  // 余分な空白を整理
+  return cleaned.replace(/\s+/g, ' ').trim();
+}
+
+// 後方互換性のためのエイリアス
+function removeLineEmojiText(text) {
+  return cleanTextForTranslation(text);
 }
 
 // テキストから言語判定の邪魔になる要素を除去する関数
