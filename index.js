@@ -127,6 +127,19 @@ async function saveTranslationLog(logData) {
   }
 }
 
+// LINE絵文字テキスト表現を除去する関数
+// 例: (moon furious), (resentful face), (brown), (cony) など
+function removeLineEmojiText(text) {
+  if (!text) return text;
+
+  // LINE絵文字テキストパターン: (word), (word word), (word-word) など
+  // 小文字英単語がスペースまたはハイフンで連結されたもの
+  const lineEmojiPattern = /\([a-z]+(?:[\s-][a-z]+)*\)/gi;
+
+  // 除去して、余分な空白を整理
+  return text.replace(lineEmojiPattern, '').replace(/\s+/g, ' ').trim();
+}
+
 // テキストから言語判定の邪魔になる要素を除去する関数
 function cleanTextForLanguageDetection(text) {
   // メンション（@ユーザー名）を削除
@@ -1076,13 +1089,21 @@ async function handleWebhook(req, res) {
             return;
           }
 
-          console.log(`[Translation] Text: "${text}" | Model: ${OPENROUTER_MODEL}`);
+          // LINE絵文字テキストを除去（翻訳前の前処理）
+          const textForTranslation = removeLineEmojiText(text);
+
+          // 前処理後にテキストが空になった場合はスキップ
+          if (!textForTranslation) {
+            return;
+          }
+
+          console.log(`[Translation] Text: "${textForTranslation}" | Model: ${OPENROUTER_MODEL}`);
 
           // 翻訳実行前の時刻を記録
           const startTime = Date.now();
 
-          // AI言語判定+翻訳実行
-          const result = await translateWithAIDetection(text, groupId);
+          // AI言語判定+翻訳実行（前処理済みテキストを使用）
+          const result = await translateWithAIDetection(textForTranslation, groupId);
           const sourceLang = result.sourceLang;
           const translations = result.translations;
 
