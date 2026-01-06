@@ -2,6 +2,7 @@ const line = require('@line/bot-sdk');
 const axios = require('axios');
 const express = require('express');
 const OpenAI = require('openai');
+const { Redis } = require('@upstash/redis');
 
 // Dynamic import for franc (ES module)
 let franc;
@@ -73,12 +74,57 @@ const TRANSLATION_SYSTEM_INSTRUCTION = `You are a high-precision multilingual tr
 const DEEPL_API_KEY = process.env.DEEPL_API_KEY;
 const DEEPL_API_URL = 'https://api-free.deepl.com/v2/translate';
 
+// Upstash Redisの設定（ログ保存用）
+let redis = null;
+if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) {
+  redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+  });
+  console.log('Upstash Redis initialized for logging');
+} else {
+  console.log('Upstash Redis not configured - logging disabled');
+}
+
 const client = new line.Client(config);
 
 // クォータエラーかどうかを判定する関数
 function isQuotaError(error) {
-  return error.message && error.message.includes('429 Too Many Requests') && 
+  return error.message && error.message.includes('429 Too Many Requests') &&
          error.message.includes('quota');
+}
+
+// 翻訳ログを保存する関数
+async function saveTranslationLog(logData) {
+  if (!redis) {
+    return; // Redisが設定されていない場合はスキップ
+  }
+
+  try {
+    const logId = `translation:${Date.now()}:${Math.random().toString(36).substr(2, 9)}`;
+
+    const log = {
+      id: logId,
+      timestamp: new Date().toISOString(),
+      groupId: logData.groupId,
+      originalText: logData.originalText,
+      detectedLanguage: logData.detectedLanguage,
+      translations: logData.translations,
+      model: logData.model,
+      processingTimeMs: logData.processingTimeMs,
+    };
+
+    // 30日間保持（TTL: 2592000秒）
+    await redis.set(logId, JSON.stringify(log), { ex: 2592000 });
+
+    // 最新1000件のログIDをリストで管理
+    await redis.lpush('translation:logs', logId);
+    await redis.ltrim('translation:logs', 0, 999);
+
+    console.log(`[Log] Saved: ${logId}`);
+  } catch (error) {
+    console.error('[Log] Save error:', error.message);
+  }
 }
 
 // テキストから言語判定の邪魔になる要素を除去する関数
@@ -361,12 +407,16 @@ ${escapedText}`;
           delete normalizedTranslations[normalizedSourceLang];
         }
 
+        // 実際に使用されたモデルを返す
+        const usedModel = completion.model || OPENROUTER_MODEL;
+
         return {
           sourceLang: normalizedSourceLang,
-          translations: normalizedTranslations
+          translations: normalizedTranslations,
+          model: usedModel
         };
       }
-      
+
       return null;
     } catch (parseError) {
       console.error('JSON解析エラー:', parseError.message);
@@ -409,9 +459,13 @@ ${escapedText}`;
               delete normalizedTranslations[normalizedSourceLang];
             }
 
+            // 実際に使用されたモデルを返す
+            const usedModel = completion.model || OPENROUTER_MODEL;
+
             return {
               sourceLang: normalizedSourceLang,
-              translations: normalizedTranslations
+              translations: normalizedTranslations,
+              model: usedModel
             };
           }
         }
@@ -666,7 +720,8 @@ async function translateWithAIDetection(text, groupId = null) {
   if (aiResult && aiResult.sourceLang && aiResult.translations && Object.keys(aiResult.translations).length > 0) {
     return {
       sourceLang: aiResult.sourceLang,
-      translations: aiResult.translations
+      translations: aiResult.translations,
+      model: aiResult.model
     };
   }
 
@@ -676,7 +731,8 @@ async function translateWithAIDetection(text, groupId = null) {
 
   return {
     sourceLang: sourceLang,
-    translations: translations
+    translations: translations,
+    model: 'fallback'
   };
 }
 
@@ -1021,11 +1077,17 @@ async function handleWebhook(req, res) {
           }
 
           console.log(`[Translation] Text: "${text}" | Model: ${OPENROUTER_MODEL}`);
-          
+
+          // 翻訳実行前の時刻を記録
+          const startTime = Date.now();
+
           // AI言語判定+翻訳実行
           const result = await translateWithAIDetection(text, groupId);
           const sourceLang = result.sourceLang;
           const translations = result.translations;
+
+          // 処理時間を計算
+          const processingTimeMs = Date.now() - startTime;
 
           if (Object.keys(translations).length === 0) {
             console.error('Translation failed: empty result');
@@ -1036,7 +1098,17 @@ async function handleWebhook(req, res) {
             return;
           }
 
-          console.log(`[Translation] Detected: ${sourceLang} | Translations: ${Object.keys(translations).join(', ')}`);
+          console.log(`[Translation] Detected: ${sourceLang} | Translations: ${Object.keys(translations).join(', ')} | Time: ${processingTimeMs}ms`);
+
+          // ログ保存（非同期で実行、エラーが発生しても翻訳処理は継続）
+          saveTranslationLog({
+            groupId,
+            originalText: text,
+            detectedLanguage: sourceLang,
+            translations,
+            model: result.model || OPENROUTER_MODEL,
+            processingTimeMs,
+          }).catch(err => console.error('[Log] Error:', err.message));
 
           // 翻訳結果を送信（長文対応版）
           try {
@@ -1075,6 +1147,32 @@ app.get('/', (req, res) => {
 
 // Webhook エンドポイント
 app.post('/', handleWebhook);
+
+// ログ取得エンドポイント（分析用）
+app.get('/logs', async (req, res) => {
+  // Redisが設定されていない場合はエラー
+  if (!redis) {
+    return res.status(503).json({ error: 'Logging is not configured' });
+  }
+
+  try {
+    const limit = Math.min(parseInt(req.query.limit) || 100, 1000);
+    const logIds = await redis.lrange('translation:logs', 0, limit - 1);
+
+    const logs = [];
+    for (const logId of logIds) {
+      const log = await redis.get(logId);
+      if (log) {
+        logs.push(typeof log === 'string' ? JSON.parse(log) : log);
+      }
+    }
+
+    res.json({ count: logs.length, logs });
+  } catch (error) {
+    console.error('[Logs API] Error:', error.message);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // Cloud Functions との互換性
 exports.lineTranslationBot = handleWebhook;
