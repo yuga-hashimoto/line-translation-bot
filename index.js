@@ -1083,6 +1083,11 @@ async function handleWebhook(req, res) {
             return;
           }
 
+          // 角括弧が含まれている場合は翻訳をスキップ
+          if (text.includes('([)') || text.includes('(])')) {
+            return;
+          }
+
           // LINE絵文字のみの場合（複数個も含む）翻訳をスキップ
           // LINE絵文字は (xxx) の形式で表現される（emoji, brown, cony, sally等）
           const lineEmojiOnlyPattern = /^(\([^)]+\)\s*)+$/;
