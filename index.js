@@ -138,10 +138,14 @@ function cleanTextForTranslation(text) {
   // メンションを除去（@ユーザー名）
   cleaned = cleaned.replace(/@[^\s]+/g, '');
 
-  // LINE絵文字テキストパターン: (word), (word word), (word-word) など
-  // 小文字英単語がスペースまたはハイフンで連結されたもの
-  const lineEmojiPattern = /\([a-z]+(?:[\s-][a-z]+)*\)/gi;
-  cleaned = cleaned.replace(lineEmojiPattern, '');
+  // 角括弧を除去
+  cleaned = cleaned.replace(/\(\[\)/g, '').replace(/\(\]\)/g, '');
+
+  // LINE絵文字テキストパターン: 既知のLINE絵文字キャラクター名と2語以上の組み合わせ
+  // brown, cony, sally, moon, james などのキャラクター名や、moon furious などの組み合わせ
+  const lineEmojiPattern = /\((brown|cony|sally|moon|james|jessica|boss|choco|leonard|edward|pangyo|ninja|muzi|apeach|frodo|neo|tube|ryan|con|jay-g|chopper)(?:\s+[a-z]+)*\)/gi;
+  const multiWordPattern = /\([a-z]+\s+[a-z]+(?:\s+[a-z]+)*\)/gi;
+  cleaned = cleaned.replace(lineEmojiPattern, '').replace(multiWordPattern, '');
 
   // 余分な空白を整理（改行は保持）
   // [^\S\n]+ は改行以外の空白文字にマッチ
@@ -1080,11 +1084,6 @@ async function handleWebhook(req, res) {
 
           // 空のメッセージは無視
           if (!text) {
-            return;
-          }
-
-          // 角括弧が含まれている場合は翻訳をスキップ
-          if (text.includes('([)') || text.includes('(])')) {
             return;
           }
 
