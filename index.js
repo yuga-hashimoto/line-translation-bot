@@ -58,6 +58,11 @@ const TRANSLATION_SYSTEM_INSTRUCTION = `You are a high-precision multilingual tr
 4. Preserve all punctuation and symbols from the original text exactly
 5. This translation is for a LINE messenger group chat
 
+**Mention Handling:**
+1. Mentions in the format @username (e.g., @田中, @John, @✨信✨) must NOT be translated
+2. Keep mentions exactly as they appear in the original text at the same position
+3. Example: "こんにちは @田中 元気？" → "Hello @田中 How are you?"
+
 **Emoji Handling:**
 1. Keep Unicode emojis (😊🎉❤️ etc.) as-is without translation or conversion
 2. Do not convert emojis to text like "(emoji)", "（絵文字）", "(이모지)", or "(表情符號)"
@@ -129,14 +134,15 @@ async function saveTranslationLog(logData) {
 
 // 翻訳前の前処理：不要な要素を除去する関数
 // - LINE絵文字テキスト: (moon furious), (resentful face), (brown), (cony) など
-// - メンション: @ユーザー名
+// - 先頭のメンション: @ユーザー名（文頭に連なるメンションのみ除去、文中のメンションは保持）
 function cleanTextForTranslation(text) {
   if (!text) return text;
 
   let cleaned = text;
 
-  // メンションを除去（@ユーザー名）
-  cleaned = cleaned.replace(/@[^\s]+/g, '');
+  // 先頭のメンションのみ除去（文頭に連なるメンションを削除）
+  // 文中のメンションはそのまま保持（AIが翻訳時にスキップする）
+  cleaned = cleaned.replace(/^(@[^\s]+\s*)+/g, '');
 
   // LINE絵文字テキストパターン: 既知のLINE絵文字キャラクター名と2語以上の組み合わせ
   // brown, cony, sally, moon, james などのキャラクター名や、moon furious などの組み合わせ
