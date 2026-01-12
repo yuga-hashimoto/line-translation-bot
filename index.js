@@ -816,27 +816,22 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
   };
 
-  const contents = [
-    {
-      type: 'text',
-      text: '🌍 Translation',
-      weight: 'bold',
-      size: 'lg',
-      color: '#1DB446'
-    }
-  ];
+  const contents = [];
 
   // 翻訳結果を追加（すべての翻訳を表示）
   const translationEntries = Object.entries(translations);
 
-  translationEntries.forEach(([lang, text]) => {
+  translationEntries.forEach(([lang, text], index) => {
     const truncatedText = truncateText(text, 1500); // 各翻訳を1500文字以内に制限
 
-    contents.push(
-      {
+    if (index > 0) {
+      contents.push({
         type: 'separator',
         margin: 'md'
-      },
+      });
+    }
+
+    contents.push(
       {
         type: 'text',
         text: languageNames[lang] || lang,
@@ -876,7 +871,7 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
   } catch (error) {
     console.error('Flex Message生成エラー:', error);
     // エラーの場合はシンプルなテキストメッセージにフォールバック
-    const fallbackText = `🌍 翻訳結果:\n\n${Object.entries(translations).map(([lang, text]) =>
+    const fallbackText = `${Object.entries(translations).map(([lang, text]) =>
       `${languageNames[lang] || lang}: ${truncateText(text, 200)}`
     ).join('\n\n')}`;
 
