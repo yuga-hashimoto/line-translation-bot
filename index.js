@@ -49,31 +49,13 @@ if (OPENROUTER_API_KEY) {
 }
 
 // Translation System Instruction
-const TRANSLATION_SYSTEM_INSTRUCTION = `You are a high-precision multilingual translation AI.
+const TRANSLATION_SYSTEM_INSTRUCTION = `You are a high-precision multilingual translation AI for a LINE group chat.
 
-**Translation Rules:**
-1. Translate the original text accurately
-2. Preserve line breaks in the translation
-3. Do not add punctuation marks (? ! . etc.) that are not in the original text
-4. Preserve all punctuation and symbols from the original text exactly
-5. This translation is for a LINE messenger group chat
-
-**Mention Handling:**
-1. Mentions in the format @username (e.g., @田中, @John, @✨信✨) must NOT be translated
-2. Keep mentions exactly as they appear in the original text at the same position
-3. Example: "こんにちは @田中 元気？" → "Hello @田中 How are you?"
-
-**Emoji Handling:**
-1. Keep Unicode emojis (😊🎉❤️ etc.) as-is without translation or conversion
-2. Do not convert emojis to text like "(emoji)", "（絵文字）", "(이모지)", or "(表情符號)"
-3. Do not include text representations like "(emoji)", "(絵文字)", "(이모지)", or "(表情符號)" in translations
-4. Exclude LINE emoji text representations (e.g., (moon smirk), (brown), (sally)) from translation results
-5. Text in the format (xxx) with parentheses are LINE emojis and should be excluded from translation output
-
-**Output Format:**
-1. When returning JSON format, strictly follow JSON structure
-2. Do not use markdown code block markers (\`\`\`)
-3. Do not include any extra characters outside of JSON`;
+Core Rules:
+1. Translate accurately, preserving line breaks and original punctuation. Do NOT add new punctuation.
+2. Handling Mentions: Keep "@username" exactly as is. Example: "Hi @John" -> "Hi @John".
+3. Handling Emojis: Keep all Unicode emojis (😊) as-is. Do NOT output text descriptions like "(emoji)".
+4. Output Format: Return ONLY a valid JSON object. No markdown markers (\`\`\`).`;
 
 // DeepL APIの設定（フォールバック用）
 const DEEPL_API_KEY = process.env.DEEPL_API_KEY;
@@ -96,7 +78,7 @@ const client = new line.Client(config);
 // クォータエラーかどうかを判定する関数
 function isQuotaError(error) {
   return error.message && error.message.includes('429 Too Many Requests') &&
-         error.message.includes('quota');
+    error.message.includes('quota');
 }
 
 // 翻訳ログを保存する関数
@@ -182,14 +164,14 @@ function detectLanguageFromText(text) {
   const koreanPattern = /[\uAC00-\uD7AF]/g;
   const chinesePattern = /[\u4E00-\u9FFF]/g;
   const latinPattern = /[a-zA-Z]/g;
-  
+
   const textLength = text.length;
   const hiraganaCount = (text.match(hiraganaPattern) || []).length;
   const katakanaCount = (text.match(katakanaPattern) || []).length;
   const koreanCount = (text.match(koreanPattern) || []).length;
   const chineseCount = (text.match(chinesePattern) || []).length;
   const latinCount = (text.match(latinPattern) || []).length;
-  
+
   // 比率を計算
   const hiraganaRatio = hiraganaCount / textLength;
   const katakanaRatio = katakanaCount / textLength;
@@ -197,7 +179,7 @@ function detectLanguageFromText(text) {
   const chineseRatio = chineseCount / textLength;
   const latinRatio = latinCount / textLength;
   const japaneseRatio = hiraganaRatio + katakanaRatio;
-  
+
   // 優先順位での判定（最も特徴的な文字から）
   if (koreanRatio >= 0.2) return 'ko';
 
@@ -266,109 +248,57 @@ async function translateWithGeminiBatchAndDetect(text, groupId = null) {
 
   try {
     // OpenRouter経由でGemini 2.5 Flash Liteを使用
-    
+
     const languageNames = {
       'ja': '日本語',
-      'ko': '한국어', 
+      'ko': '한국어',
       'en': 'English',
       'fr': 'Français',
       'th': 'ภาษาไทย',
       'zh-TW': '繁體中文'
     };
-    
+
     // 特定グループかどうかで翻訳対象言語を決定
     let availableLanguages, targetLanguageDescription;
     if (groupId === FRENCH_ONLY_GROUP_ID) {
       availableLanguages = ['ja', 'fr', 'en', 'zh-TW'];
       targetLanguageDescription = '日本語、フランス語、英語、台湾語（繁体字中国語）';
-      } else {
-        availableLanguages = ['ja', 'ko', 'zh-TW', 'en'];
-        targetLanguageDescription = '日本語、韓国語、台湾語（繁体字中国語）、英語';
-      }
-    
+    } else {
+      availableLanguages = ['ja', 'ko', 'zh-TW', 'en'];
+      targetLanguageDescription = '日本語、韓国語、台湾語（繁体字中国語）、英語';
+    }
+
     // 改行を含むテキストをJSON文字列として安全にエスケープ
     const escapedText = JSON.stringify(text);
 
-    // Create translation examples based on group (showing multiple patterns where detected language is excluded)
-    const exampleTranslations = groupId === FRENCH_ONLY_GROUP_ID
-      ? `Example 1: When Japanese is detected
+    // Create list of target languages (excluding the original language) - purely for display/context in prompt if needed,
+    // but the schema approach handles it better dynamically.
+
+    const prompt = `Identify the language of the text below and provide translations in JSON format.
+
+Input Text: ${escapedText}
+
+Target schema:
 {
-  "detected_language": "ja",
+  "detected_language": "Detected language code (available codes: ${availableLanguages.join(', ')})",
   "translations": {
-    "fr": "Traduction française",
-    "en": "English translation",
-    "zh-TW": "中文翻譯"
+    "target_lang_code": "Translated text"
   }
 }
 
-Example 2: When English is detected
-{
-  "detected_language": "en",
-  "translations": {
-    "ja": "日本語翻訳",
-    "fr": "Traduction française",
-    "zh-TW": "中文翻譯"
-  }
-}`
-      : `Example 1: When Japanese is detected
+Requirements:
+1. Detect language from content (ignore mentions/names).
+2. Translate to ALL supported languages (${availableLanguages.join(', ')}) EXCEPT the detected language.
+3. ${groupId === FRENCH_ONLY_GROUP_ID ? 'Support French (fr) as a target language.' : '"zh-TW" stands for Traditional Chinese (Taiwanese).'}
+4. Return ONLY the JSON object.
+
+Example (if Input is Japanese):
 {
   "detected_language": "ja",
   "translations": {
-    "ko": "한국어 번역",
-    "zh-TW": "中文翻譯",
-    "en": "English translation"
-  }
-}
-
-Example 2: When English is detected
-{
-  "detected_language": "en",
-  "translations": {
-    "ja": "日本語翻訳",
-    "ko": "한국어 번역",
-    "zh-TW": "中文翻譯"
+    ${groupId === FRENCH_ONLY_GROUP_ID ? '"fr": "...", "en": "...", "zh-TW": "..."' : '"ko": "...", "zh-TW": "...", "en": "..."'}
   }
 }`;
-
-    // Create list of target languages (excluding the original language)
-    const targetLanguagesList = availableLanguages.filter(lang => lang !== 'ja').join(', ');
-
-    const prompt = `Detect the language of the following text and translate it into appropriate languages.
-
-Target languages: ${targetLanguageDescription}
-Available language codes: ${availableLanguages.join(', ')}
-
-Tasks:
-1. Detect the language of the input text
-   - Ignore @mentions (e.g., @username) and Chinese person names, detect language based only on the actual message content
-   - If hiragana or katakana is present, detect as Japanese
-   - If Hangul is present, detect as Korean
-   - Consider the context of the entire message for detection
-
-2. Translate into **ALL target languages except the detected language**
-   - **CRITICAL: Never include the detected language in the translations object**
-   - Example: If you detect English, do NOT include "en" in translations, only translate to other languages
-   - Do not omit any languages (except the detected language)
-   - Provide translations for all target languages (except the detected language)
-
-3. Use only these language codes strictly: ${availableLanguages.join(', ')}
-
-4. For Traditional Chinese (Taiwan), use only "zh-TW"
-
-5. Provide only one translation per language
-
-Important notes:
-- For text like "@毛沢東 こんにちは", ignore "@毛沢東" and detect language from "こんにちは"
-- If hiragana is present, detect as Japanese
-- Do not be misled by Chinese characters in mentions or person names
-- **Never include the detected language in the translations object**
-- Translate to all languages except the detected one
-
-Output format (JSON):
-${exampleTranslations}
-
-Text to translate:
-${escapedText}`;
 
     // OpenRouter APIを呼び出し
     const apiParams = {
@@ -430,7 +360,7 @@ ${escapedText}`;
         // detected_languageも正規化
         let normalizedSourceLang = result.detected_language;
         if (result.detected_language === 'zh' || result.detected_language === 'zh-CN' ||
-            result.detected_language === 'zh-Hans' || result.detected_language === 'zh-Hant') {
+          result.detected_language === 'zh-Hans' || result.detected_language === 'zh-Hant') {
           normalizedSourceLang = 'zh-TW';
         }
 
@@ -453,7 +383,7 @@ ${escapedText}`;
       return null;
     } catch (parseError) {
       console.error('JSON解析エラー:', parseError.message);
-      
+
       // 正規表現でJSONを抽出する最後の試み
       try {
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -468,7 +398,7 @@ ${escapedText}`;
               if (key === 'zh' || key === 'zh-CN' || key === 'zh-Hans' || key === 'zh-Hant') {
                 normalizedKey = 'zh-TW';
               }
-              
+
               // 既に同じキーが存在する場合は、より短い（一般的な）翻訳を優先
               if (normalizedTranslations[normalizedKey]) {
                 if (value.length < normalizedTranslations[normalizedKey].length) {
@@ -478,11 +408,11 @@ ${escapedText}`;
                 normalizedTranslations[normalizedKey] = value;
               }
             }
-            
+
             // detected_languageも正規化
             let normalizedSourceLang = result.detected_language;
             if (result.detected_language === 'zh' || result.detected_language === 'zh-CN' ||
-                result.detected_language === 'zh-Hans' || result.detected_language === 'zh-Hant') {
+              result.detected_language === 'zh-Hans' || result.detected_language === 'zh-Hant') {
               normalizedSourceLang = 'zh-TW';
             }
 
@@ -505,19 +435,19 @@ ${escapedText}`;
       } catch (regexParseError) {
         console.error('正規表現でのJSON抽出も失敗:', regexParseError.message);
       }
-      
+
       return null;
     }
-    
+
   } catch (error) {
     console.error('Translation API error (language detection + translation):', error);
-    
+
     // クォータエラーの場合はフラグを設定
     if (isQuotaError(error)) {
       console.log('翻訳APIクォータエラーを検出、フラグを設定');
       apiQuotaExceeded = true;
     }
-    
+
     return null;
   }
 }
@@ -538,7 +468,7 @@ async function translateWithGeminiBatch(text, targetLanguages) {
 
   try {
     // OpenRouter経由でGemini 2.5 Flash Liteを使用
-    
+
     const languageNames = {
       'ja': 'Japanese',
       'ko': 'Korean',
@@ -602,7 +532,7 @@ ${escapedText}`;
     } catch (parseError) {
       console.error('JSON解析エラー:', parseError.message);
       console.error('レスポンステキスト:', responseText);
-      
+
       // 正規表現でJSONを抽出する最後の試み
       try {
         const jsonMatch = responseText.match(/\{[\s\S]*\}/);
@@ -613,10 +543,10 @@ ${escapedText}`;
       } catch (regexParseError) {
         console.error('正規表現でのJSON抽出も失敗:', regexParseError.message);
       }
-      
+
       return null;
     }
-    
+
   } catch (error) {
     console.error('Translation API error:', error);
     return null;
@@ -694,30 +624,30 @@ async function translateWithDeepL(text, targetLang) {
       'fr': 'FR'
       // 'th': タイ語はDeepL APIでサポートされていません
     };
-    
+
     const deeplTargetLang = deeplLangMap[targetLang];
-    
+
     // DeepL APIでサポートされていない言語の場合
     if (!deeplTargetLang) {
       console.log(`DeepL APIは${targetLang}をサポートしていません`);
       return null;
     }
-    
+
     const params = new URLSearchParams();
     params.append('auth_key', DEEPL_API_KEY);
     params.append('text', text);
     params.append('target_lang', deeplTargetLang);
-    
+
     const response = await axios.post(DEEPL_API_URL, params, {
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded'
       }
     });
-    
+
     if (response.data && response.data.translations && response.data.translations.length > 0) {
       return response.data.translations[0].text;
     }
-    
+
     return null;
   } catch (error) {
     console.error('DeepL API error:', error.message);
@@ -772,25 +702,25 @@ async function translateWithAIDetection(text, groupId = null) {
 // 複数言語に翻訳する関数（フォールバック用）
 async function translateToMultipleLanguages(text, sourceLang, groupId = null) {
   let targetLanguages = [];
-  
+
   // 特定のグループIDの場合は日本語、フランス語、タイ語、台湾語
   if (groupId === FRENCH_ONLY_GROUP_ID) {
     switch (sourceLang) {
-        case 'ja':
-          targetLanguages = ['fr', 'en', 'zh-TW'];
-          break;
-        case 'fr':
-          targetLanguages = ['ja', 'en', 'zh-TW'];
-          break;
-        case 'en':
-          targetLanguages = ['ja', 'fr', 'zh-TW'];
-          break;
-        case 'zh-TW':
-          targetLanguages = ['ja', 'fr', 'en'];
-          break;
-        default:
-          // その他の言語の場合は4言語すべてに翻訳
-          targetLanguages = ['ja', 'fr', 'en', 'zh-TW'];
+      case 'ja':
+        targetLanguages = ['fr', 'en', 'zh-TW'];
+        break;
+      case 'fr':
+        targetLanguages = ['ja', 'en', 'zh-TW'];
+        break;
+      case 'en':
+        targetLanguages = ['ja', 'fr', 'zh-TW'];
+        break;
+      case 'zh-TW':
+        targetLanguages = ['ja', 'fr', 'en'];
+        break;
+      default:
+        // その他の言語の場合は4言語すべてに翻訳
+        targetLanguages = ['ja', 'fr', 'en', 'zh-TW'];
     }
   } else {
     // 通常のグループの場合は従来通り
@@ -809,7 +739,7 @@ async function translateToMultipleLanguages(text, sourceLang, groupId = null) {
         targetLanguages = ['ja', 'ko', 'zh-TW'];
     }
   }
-  
+
   // まず一括翻訳を試行
   let translations = await translateWithGeminiBatch(text, targetLanguages);
 
@@ -819,14 +749,14 @@ async function translateToMultipleLanguages(text, sourceLang, groupId = null) {
 
   // 一括翻訳が失敗した場合は個別翻訳でフォールバック
   translations = {};
-  
+
   for (const targetLang of targetLanguages) {
     const translated = await translateText(text, targetLang);
     if (translated) {
       translations[targetLang] = translated;
     }
   }
-  
+
   return translations;
 }
 
@@ -879,13 +809,13 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
     'th': '🇹🇭 ภาษาไทย',
     'zh-TW': '🇹🇼 繁體中文'
   };
-  
+
   // テキストを制限内に収める（LINE Flex Messageの制限対応）
   const truncateText = (text, maxLength = 2000) => {
     if (!text) return '';
     return text.length > maxLength ? text.substring(0, maxLength) + '...' : text;
   };
-  
+
   const contents = [
     {
       type: 'text',
@@ -895,13 +825,13 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
       color: '#1DB446'
     }
   ];
-  
+
   // 翻訳結果を追加（すべての翻訳を表示）
   const translationEntries = Object.entries(translations);
-  
+
   translationEntries.forEach(([lang, text]) => {
     const truncatedText = truncateText(text, 1500); // 各翻訳を1500文字以内に制限
-    
+
     contents.push(
       {
         type: 'separator',
@@ -924,10 +854,10 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
       }
     );
   });
-  
+
   // altTextも制限内に収める
   const altText = truncateText(originalText, 400);
-  
+
   try {
     return {
       type: 'flex',
@@ -946,10 +876,10 @@ function generateTranslationMessage(originalText, sourceLang, translations) {
   } catch (error) {
     console.error('Flex Message生成エラー:', error);
     // エラーの場合はシンプルなテキストメッセージにフォールバック
-    const fallbackText = `🌍 翻訳結果:\n\n${Object.entries(translations).map(([lang, text]) => 
+    const fallbackText = `🌍 翻訳結果:\n\n${Object.entries(translations).map(([lang, text]) =>
       `${languageNames[lang] || lang}: ${truncateText(text, 200)}`
     ).join('\n\n')}`;
-    
+
     return {
       type: 'text',
       text: fallbackText.length > 5000 ? fallbackText.substring(0, 4990) + '...' : fallbackText
@@ -1157,7 +1087,7 @@ async function handleWebhook(req, res) {
           } catch (replyError) {
             console.error('Reply error:', replyError.message);
           }
-          
+
         } catch (err) {
           console.error('Event processing error:', err.message);
           return Promise.resolve();
