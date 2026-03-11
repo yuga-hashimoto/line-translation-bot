@@ -87,23 +87,40 @@ function isQuotaError(error) {
     error.message.includes('quota');
 }
 
-// LINEメンバー情報を line:known-members に保存する関数
-async function saveMemberInfo(userId, groupId) {
+// LINEメンバー情報を line:known-members に保存する関数（バッチ処理）
+async function saveGroupMemberInfoBatch(userIds, groupId) {
+  if (userIds.size === 0) return;
   try {
-    const profile = await client.getGroupMemberProfile(groupId, userId);
     const raw = await rangersRedis.get('line:known-members');
     const members = raw
       ? (typeof raw === 'object' ? raw : JSON.parse(raw))
       : {};
-    members[userId] = {
-      userId: profile.userId,
-      displayName: profile.displayName,
-      pictureUrl: profile.pictureUrl || null,
-      groupId,
-    };
-    await rangersRedis.set('line:known-members', JSON.stringify(members));
+
+    let isUpdated = false;
+    for (const userId of userIds) {
+      // すでに保存済みのユーザーはスキップ
+      if (members[userId]) continue;
+      try {
+        const profile = await client.getGroupMemberProfile(groupId, userId);
+        members[userId] = {
+          userId,
+          displayName: profile.displayName,
+          pictureUrl: profile.pictureUrl || null,
+          groupId,
+          updatedAt: Date.now(),
+        };
+        isUpdated = true;
+        console.log(`👤 プロフィール保存: [グループ: ${groupId}] ${profile.displayName} (${userId})`);
+      } catch {
+        // ボット自身や取得不可のユーザーは無視
+      }
+    }
+
+    if (isUpdated) {
+      await rangersRedis.set('line:known-members', JSON.stringify(members));
+    }
   } catch (err) {
-    console.error(`[saveMemberInfo] userId=${userId}:`, err.message);
+    console.error(`[saveGroupMemberInfoBatch]:`, err.message);
   }
 }
 
@@ -1030,17 +1047,18 @@ async function handleWebhook(req, res) {
           const groupId = event.source.groupId;
           const text = event.message.text.trim();
 
-          // 送信者のメンバー情報を保存（非同期、エラーは無視）
+          // LINEメンバー情報の蓄積（送信者＋メンション対象、バッチ処理）
+          const userIdsToFetch = new Set();
           if (event.source.userId) {
-            saveMemberInfo(event.source.userId, groupId).catch(() => {});
+            userIdsToFetch.add(event.source.userId);
           }
-          // メンションされたユーザーの情報も保存
           const mentionees = event.message.mention?.mentionees || [];
           for (const mentionee of mentionees) {
-            if (mentionee.userId && !mentionee.isSelf) {
-              saveMemberInfo(mentionee.userId, groupId).catch(() => {});
+            if (mentionee.userId && mentionee.userId !== 'all') {
+              userIdsToFetch.add(mentionee.userId);
             }
           }
+          saveGroupMemberInfoBatch(userIdsToFetch, groupId).catch(() => {});
 
           // replyTokenの存在確認
           if (!event.replyToken) {
