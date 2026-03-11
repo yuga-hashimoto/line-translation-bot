@@ -73,12 +73,38 @@ if (process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN) 
   console.log('Upstash Redis not configured - logging disabled');
 }
 
+// Upstash Redisの設定（rangers-api と共有、line:known-members 書き込み用）
+const rangersRedis = new Redis({
+  url: process.env.RANGERS_UPSTASH_URL,
+  token: process.env.RANGERS_UPSTASH_TOKEN,
+});
+
 const client = new line.Client(config);
 
 // クォータエラーかどうかを判定する関数
 function isQuotaError(error) {
   return error.message && error.message.includes('429 Too Many Requests') &&
     error.message.includes('quota');
+}
+
+// LINEメンバー情報を line:known-members に保存する関数
+async function saveMemberInfo(userId, groupId) {
+  try {
+    const profile = await client.getGroupMemberProfile(groupId, userId);
+    const raw = await rangersRedis.get('line:known-members');
+    const members = raw
+      ? (typeof raw === 'object' ? raw : JSON.parse(raw))
+      : {};
+    members[userId] = {
+      userId: profile.userId,
+      displayName: profile.displayName,
+      pictureUrl: profile.pictureUrl || null,
+      groupId,
+    };
+    await rangersRedis.set('line:known-members', JSON.stringify(members));
+  } catch (err) {
+    console.error(`[saveMemberInfo] userId=${userId}:`, err.message);
+  }
 }
 
 // 翻訳ログを保存する関数
@@ -1003,6 +1029,18 @@ async function handleWebhook(req, res) {
 
           const groupId = event.source.groupId;
           const text = event.message.text.trim();
+
+          // 送信者のメンバー情報を保存（非同期、エラーは無視）
+          if (event.source.userId) {
+            saveMemberInfo(event.source.userId, groupId).catch(() => {});
+          }
+          // メンションされたユーザーの情報も保存
+          const mentionees = event.message.mention?.mentionees || [];
+          for (const mentionee of mentionees) {
+            if (mentionee.userId && !mentionee.isSelf) {
+              saveMemberInfo(mentionee.userId, groupId).catch(() => {});
+            }
+          }
 
           // replyTokenの存在確認
           if (!event.replyToken) {
