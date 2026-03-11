@@ -98,8 +98,8 @@ async function saveGroupMemberInfoBatch(userIds, groupId) {
 
     let isUpdated = false;
     for (const userId of userIds) {
-      // すでに保存済みのユーザーはスキップ
-      if (members[userId]) continue;
+      // 同じグループIDですでに保存済みのユーザーはスキップ
+      if (members[userId] && members[userId].groupId === groupId) continue;
       try {
         const profile = await client.getGroupMemberProfile(groupId, userId);
         members[userId] = {
