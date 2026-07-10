@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const { createTranslationProvider } = require('../lib/translationProvider');
 
 function createOpenAIDouble() {
@@ -64,4 +66,10 @@ test('missing or unsupported provider configuration is unavailable without a cli
   assert.equal(unsupported.isReady, false);
   assert.match(warnings.join('\n'), /OPENAI_API_KEY is not set/);
   assert.match(warnings.join('\n'), /Unsupported AI_PROVIDER: unknown/);
+});
+
+test('translation entry points delegate to the selected provider', () => {
+  const source = fs.readFileSync(path.join(__dirname, '..', 'index.js'), 'utf8');
+  assert.equal((source.match(/translationProvider\.createChatCompletion\(messages\)/g) || []).length, 3);
+  assert.equal(source.includes('openrouter.chat.completions.create(apiParams)'), false);
 });
