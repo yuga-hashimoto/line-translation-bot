@@ -1,7 +1,7 @@
 {
   "name": "line-translation-bot",
   "version": "1.0.0",
-  "description": "LINE multi-language translation bot using Gemini API with DeepL fallback",
+  "description": "LINE multi-language translation bot with selectable OpenAI or OpenRouter support and DeepL fallback",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",

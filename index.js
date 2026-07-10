@@ -581,7 +581,7 @@ ${text}`;
 
     return translatedText || null;
   } catch (error) {
-    console.error('OpenRouter API翻訳エラー:', error);
+    console.error(`${translationProvider.name} translation error:`, error);
     return null;
   }
 }
