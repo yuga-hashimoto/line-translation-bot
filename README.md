@@ -1,6 +1,6 @@
 # LINE Translation Bot
 
-LINE グループチャット専用の多言語翻訳BOTです。OpenRouter経由でGemini APIを使用し、フォールバックとしてDeepL APIを使用して日本語、韓国語、台湾語、英語間の翻訳を行います。
+LINE グループチャット専用の多言語翻訳BOTです。選択した OpenAI または OpenRouter プロバイダーと、フォールバックとして DeepL APIを使用して日本語、韓国語、台湾語、英語間の翻訳を行います。
 
 ## 機能
 
@@ -18,14 +18,26 @@ npm install
 
 ### 2. 環境変数の設定
 
-必要な環境変数:
+共通の環境変数:
 - `LINE_CHANNEL_ACCESS_TOKEN`: LINE Messaging APIのアクセストークン
 - `LINE_CHANNEL_SECRET`: LINE Messaging APIのチャネルシークレット
-- `OPENROUTER_API_KEY`: OpenRouter APIキー（必須）
-- `OPENROUTER_MODEL`: 使用するモデル名（省略可、デフォルト: `google/gemini-2.5-flash-lite`）
-- `OPENROUTER_MODEL2`: フォールバックモデル1（省略可）
-- `OPENROUTER_MODEL3`: フォールバックモデル2（省略可）
 - `DEEPL_API_KEY`: DeepL APIキー（フォールバック用、省略可）
+
+`AI_PROVIDER` で翻訳プロバイダーを選択します。省略時は既存の OpenRouter を使用します。
+
+```bash
+# Direct OpenAI with the data-sharing eligible project
+AI_PROVIDER=openai
+OPENAI_API_KEY=replace_with_a_new_key
+OPENAI_MODEL=gpt-5.4-mini
+
+# Roll back without code changes
+AI_PROVIDER=openrouter
+OPENROUTER_API_KEY=replace_with_openrouter_key
+OPENROUTER_MODEL=deepseek/deepseek-v5-flash
+```
+
+OpenRouter を使用する場合は、`OPENROUTER_API_KEY` が必須です。`OPENROUTER_MODEL` は省略時に `google/gemini-2.5-flash-lite` となり、`OPENROUTER_MODEL2` と `OPENROUTER_MODEL3` でフォールバックモデルを指定できます。OpenAI を使用する場合は、`OPENAI_API_KEY` が必須で、`OPENAI_MODEL` の既定値は `gpt-5.4-mini` です。
 
 ```bash
 # ローカル開発時は .env ファイルに設定
@@ -44,31 +56,18 @@ gcloud functions deploy lineTranslationBot \
   --runtime nodejs20 \
   --trigger-http \
   --allow-unauthenticated \
-  --set-env-vars LINE_CHANNEL_ACCESS_TOKEN=your_token,LINE_CHANNEL_SECRET=your_secret,OPENROUTER_API_KEY=your_key,DEEPL_API_KEY=your_deepl_key
+  --set-env-vars LINE_CHANNEL_ACCESS_TOKEN=your_token,LINE_CHANNEL_SECRET=your_secret,DEEPL_API_KEY=your_deepl_key,AI_PROVIDER=openai,OPENAI_API_KEY=replace_with_a_new_key,OPENAI_MODEL=gpt-5.4-mini,OPENROUTER_API_KEY=replace_with_openrouter_key,OPENROUTER_MODEL=deepseek/deepseek-v5-flash
 ```
 
-### モデルの変更方法
+`npm run deploy` は `AI_PROVIDER`、`OPENAI_API_KEY`、`OPENAI_MODEL` を既存の OpenRouter および DeepL 変数とともに渡します。デプロイはスモークテストには含まれません。入力・出力の共有は、有効にした OpenAI プロジェクトにのみ適用されます。
 
-使用するAIモデルを変更するには、`OPENROUTER_MODEL` 環境変数を設定します。
+### OpenAI スモークテスト
 
-**ローカル環境:**
+実際の OpenAI 翻訳を 1 回だけ確認するには、新しく発行したキーをローカルで指定します。キーをリポジトリ、チャット、またはシェル履歴に保存しないでください。
+
 ```bash
-# .env ファイルで設定
-OPENROUTER_MODEL=google/gemini-2.0-flash-exp:free
+AI_PROVIDER=openai OPENAI_API_KEY=your_new_key npm run test:openai
 ```
-
-**本番環境（Cloud Functions/Cloud Run）:**
-```bash
-# デプロイ時に環境変数を指定
-export OPENROUTER_MODEL=google/gemini-2.0-flash-exp:free
-npm run deploy
-```
-
-**利用可能なモデル例:**
-- `google/gemini-2.5-flash-lite` - デフォルト、高速・低コスト
-- `google/gemini-2.0-flash-exp:free` - 実験版、無料
-- `google/gemini-pro-1.5` - より高性能
-- その他のモデルは [OpenRouter Models](https://openrouter.ai/docs#models) を参照
 
 ### フォールバックモデルの設定
 
