@@ -23,6 +23,7 @@ const FRENCH_ONLY_GROUP_ID = 'C40b7245622ac6e6ec1e6c1def21881e2'; // ハード�
 let apiQuotaExceeded = false;
 
 const { createTranslationProvider } = require('./lib/translationProvider');
+const { createWebhookEventDeduper } = require('./lib/webhookEventDeduper');
 
 const translationProvider = createTranslationProvider();
 const ACTIVE_MODEL = translationProvider.model;
@@ -62,6 +63,7 @@ const rangersRedis = new Redis({
 });
 
 const client = new line.Client(config);
+const shouldSkipWebhookEvent = createWebhookEventDeduper({ getRedis: () => redis });
 
 // クォータエラーかどうかを判定する関数
 function isQuotaError(error) {
@@ -958,6 +960,10 @@ async function handleWebhook(req, res) {
     await Promise.all(
       req.body.events.map(async (event, index) => {
         try {
+          if (await shouldSkipWebhookEvent(event)) {
+            return;
+          }
+
           if (event.type !== 'message') {
             return;
           }
@@ -1068,6 +1074,9 @@ async function handleWebhook(req, res) {
             await sendTranslationMessages(client, event.replyToken, groupId, text, sourceLang, translations);
           } catch (replyError) {
             console.error('Reply error:', replyError.message);
+            if (replyError.response && replyError.response.data) {
+              console.error('Reply error detail:', JSON.stringify(replyError.response.data));
+            }
           }
 
         } catch (err) {
