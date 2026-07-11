@@ -16,7 +16,7 @@ function createOpenAIDouble() {
   return { FakeOpenAI, instances };
 }
 
-test('OpenAI provider uses gpt-5.4-mini and omits OpenRouter fallback fields', async () => {
+test('OpenAI provider uses gpt-5.6-luna and omits OpenRouter fallback fields', async () => {
   const { FakeOpenAI, instances } = createOpenAIDouble();
   const provider = createTranslationProvider({
     env: { AI_PROVIDER: 'openai', OPENAI_API_KEY: 'test-key' },
@@ -27,11 +27,11 @@ test('OpenAI provider uses gpt-5.4-mini and omits OpenRouter fallback fields', a
   const completion = await provider.createChatCompletion([{ role: 'user', content: 'こんにちは' }]);
 
   assert.equal(provider.name, 'openai');
-  assert.equal(provider.model, 'gpt-5.4-mini');
+  assert.equal(provider.model, 'gpt-5.6-luna');
   assert.equal(provider.isReady, true);
   assert.deepEqual(instances[0].options, { apiKey: 'test-key' });
   assert.deepEqual(completion.params, {
-    model: 'gpt-5.4-mini',
+    model: 'gpt-5.6-luna',
     messages: [{ role: 'user', content: 'こんにちは' }],
   });
 });

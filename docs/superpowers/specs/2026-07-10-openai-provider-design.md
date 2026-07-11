@@ -2,13 +2,13 @@
 
 ## Goal
 
-Allow the LINE translation bot to use OpenAI directly with `gpt-5.4-mini` while retaining the existing OpenRouter configuration as a reversible fallback. The default production behavior remains unchanged until `AI_PROVIDER=openai` is explicitly configured.
+Allow the LINE translation bot to use OpenAI directly with `gpt-5.6-luna` while retaining the existing OpenRouter configuration as a reversible fallback. The default production behavior remains unchanged until `AI_PROVIDER=openai` is explicitly configured.
 
 ## Configuration
 
 - `AI_PROVIDER` selects the primary client: `openrouter` (default) or `openai`.
 - `OPENAI_API_KEY` is required only when `AI_PROVIDER=openai`.
-- `OPENAI_MODEL` defaults to `gpt-5.4-mini` when the OpenAI provider is selected.
+- `OPENAI_MODEL` defaults to `gpt-5.6-luna` when the OpenAI provider is selected.
 - Existing `OPENROUTER_*` and `DEEPL_API_KEY` variables retain their present meanings.
 - Documentation and deployment commands will pass the OpenAI variables without printing key material.
 
@@ -30,7 +30,7 @@ The code will construct one OpenAI-SDK-compatible client from the selected provi
 
 ## Verification
 
-1. Unit tests mock the selected client and verify that OpenAI requests use `gpt-5.4-mini` without OpenRouter fallback fields.
+1. Unit tests mock the selected client and verify that OpenAI requests use `gpt-5.6-luna` without OpenRouter fallback fields.
 2. Existing OpenRouter behavior is covered by a regression test for the fallback field.
 3. A one-request opt-in integration check runs only when `OPENAI_API_KEY` is supplied, using a harmless Japanese-to-English translation and reporting the resolved model and status without exposing credentials.
 4. No deployment occurs as part of this change. Production cutover remains a separate explicit action.

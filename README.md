@@ -29,7 +29,7 @@ npm install
 # Direct OpenAI with the data-sharing eligible project
 AI_PROVIDER=openai
 OPENAI_API_KEY=replace_with_a_new_key
-OPENAI_MODEL=gpt-5.4-mini
+OPENAI_MODEL=gpt-5.6-luna
 
 # Roll back without code changes
 AI_PROVIDER=openrouter
@@ -37,7 +37,7 @@ OPENROUTER_API_KEY=replace_with_openrouter_key
 OPENROUTER_MODEL=deepseek/deepseek-v5-flash
 ```
 
-OpenRouter を使用する場合は、`OPENROUTER_API_KEY` が必須です。`OPENROUTER_MODEL` は省略時に `google/gemini-2.5-flash-lite` となり、`OPENROUTER_MODEL2` と `OPENROUTER_MODEL3` でフォールバックモデルを指定できます。OpenAI を使用する場合は、`OPENAI_API_KEY` が必須で、`OPENAI_MODEL` の既定値は `gpt-5.4-mini` です。
+OpenRouter を使用する場合は、`OPENROUTER_API_KEY` が必須です。`OPENROUTER_MODEL` は省略時に `google/gemini-2.5-flash-lite` となり、`OPENROUTER_MODEL2` と `OPENROUTER_MODEL3` でフォールバックモデルを指定できます。OpenAI を使用する場合は、`OPENAI_API_KEY` が必須で、`OPENAI_MODEL` の既定値は `gpt-5.6-luna` です。
 
 ```bash
 # ローカル開発時は .env ファイルに設定
@@ -56,7 +56,7 @@ gcloud functions deploy lineTranslationBot \
   --runtime nodejs20 \
   --trigger-http \
   --allow-unauthenticated \
-  --set-env-vars LINE_CHANNEL_ACCESS_TOKEN=your_token,LINE_CHANNEL_SECRET=your_secret,DEEPL_API_KEY=your_deepl_key,AI_PROVIDER=openai,OPENAI_API_KEY=replace_with_a_new_key,OPENAI_MODEL=gpt-5.4-mini,OPENROUTER_API_KEY=replace_with_openrouter_key,OPENROUTER_MODEL=deepseek/deepseek-v5-flash
+  --set-env-vars LINE_CHANNEL_ACCESS_TOKEN=your_token,LINE_CHANNEL_SECRET=your_secret,DEEPL_API_KEY=your_deepl_key,AI_PROVIDER=openai,OPENAI_API_KEY=replace_with_a_new_key,OPENAI_MODEL=gpt-5.6-luna,OPENROUTER_API_KEY=replace_with_openrouter_key,OPENROUTER_MODEL=deepseek/deepseek-v5-flash
 ```
 
 `npm run deploy` は `AI_PROVIDER`、`OPENAI_API_KEY`、`OPENAI_MODEL` を既存の OpenRouter および DeepL 変数とともに渡します。デプロイはスモークテストには含まれません。入力・出力の共有は、有効にした OpenAI プロジェクトにのみ適用されます。

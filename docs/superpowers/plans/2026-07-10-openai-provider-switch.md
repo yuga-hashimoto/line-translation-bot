@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Add an opt-in direct OpenAI provider using `gpt-5.4-mini`, while preserving the current OpenRouter provider and DeepL fallback behavior.
+**Goal:** Add an opt-in direct OpenAI provider using `gpt-5.6-luna`, while preserving the current OpenRouter provider and DeepL fallback behavior.
 
 **Architecture:** Move provider-specific OpenAI SDK construction and chat-completion parameter shaping into a small module. `index.js` creates one provider from environment variables and delegates all three translation call sites to it; only the OpenRouter provider adds `extra_body.models`. A Node built-in test suite verifies both request shapes, and an opt-in script sends a harmless live translation only when an environment key is supplied.
 
@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - `AI_PROVIDER` defaults to `openrouter`; `openai` is the only new accepted value.
-- The direct OpenAI default model is exactly `gpt-5.4-mini`.
+- The direct OpenAI default model is exactly `gpt-5.6-luna`.
 - Existing `OPENROUTER_*` and `DEEPL_API_KEY` behavior remains unchanged.
 - Never commit, log, or place API keys in test fixtures or documentation examples.
 - Do not deploy in this change; production cutover is an explicit later action.
@@ -60,7 +60,7 @@ function createOpenAIDouble() {
   return { FakeOpenAI, instances };
 }
 
-test('OpenAI provider uses gpt-5.4-mini and omits OpenRouter fallback fields', async () => {
+test('OpenAI provider uses gpt-5.6-luna and omits OpenRouter fallback fields', async () => {
   const { FakeOpenAI, instances } = createOpenAIDouble();
   const provider = createTranslationProvider({
     env: { AI_PROVIDER: 'openai', OPENAI_API_KEY: 'test-key' },
@@ -71,11 +71,11 @@ test('OpenAI provider uses gpt-5.4-mini and omits OpenRouter fallback fields', a
   const completion = await provider.createChatCompletion([{ role: 'user', content: 'こんにちは' }]);
 
   assert.equal(provider.name, 'openai');
-  assert.equal(provider.model, 'gpt-5.4-mini');
+  assert.equal(provider.model, 'gpt-5.6-luna');
   assert.equal(provider.isReady, true);
   assert.deepEqual(instances[0].options, { apiKey: 'test-key' });
   assert.deepEqual(completion.params, {
-    model: 'gpt-5.4-mini',
+    model: 'gpt-5.6-luna',
     messages: [{ role: 'user', content: 'こんにちは' }],
   });
 });
@@ -96,7 +96,7 @@ const OpenAI = require('openai');
 
 const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1';
 const DEFAULT_OPENROUTER_MODEL = 'google/gemini-2.5-flash-lite';
-const DEFAULT_OPENAI_MODEL = 'gpt-5.4-mini';
+const DEFAULT_OPENAI_MODEL = 'gpt-5.6-luna';
 
 function createUnavailableProvider(name, model, logger, reason) {
   logger.warn(`Translation provider unavailable: ${reason}`);
@@ -376,7 +376,7 @@ Replace the OpenRouter-only environment-variable section in `README.md` with pro
 # Direct OpenAI with the data-sharing eligible project
 AI_PROVIDER=openai
 OPENAI_API_KEY=replace_with_a_new_key
-OPENAI_MODEL=gpt-5.4-mini
+OPENAI_MODEL=gpt-5.6-luna
 
 # Roll back without code changes
 AI_PROVIDER=openrouter
@@ -404,7 +404,7 @@ AI_PROVIDER=openai OPENAI_API_KEY=your_new_key npm run test:openai
 Expected:
 
 - First command exits `1` and prints `Set AI_PROVIDER=openai and OPENAI_API_KEY before running this test.`
-- Second command exits `0` and prints JSON with `status` equal to `completed` and a `gpt-5.4-mini` model identifier.
+- Second command exits `0` and prints JSON with `status` equal to `completed` and a `gpt-5.6-luna` model identifier.
 
 Use a newly issued key only; do not reuse a key previously pasted into a chat.
 
